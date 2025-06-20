@@ -1,0 +1,98 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="ca">
+<head>
+    <meta charset="UTF-8" />
+    <title>Detall de {{ stock.ticker }}</title>
+    <link href="{% static 'css/output.css' %}" rel="stylesheet">
+    <script src="https://cdn.plot.ly/plotly-latest.min.js"></script>  <!-- <- Aquí -->
+</head>
+<body>
+    <h1>{{ stock.name }} ({{ stock.ticker }})</h1>
+
+    <h2 class="text-lg font-semibold mb-4">Gràfics</h2>
+
+    <div class="mx-40">
+        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6 mx-auto mb-5">
+
+            {% for chart in charts %}
+            <div onclick="openModal('{{ forloop.counter0 }}')" class="border rounded-xl shadow p-6 w-full cursor-pointer flex flex-col">
+                <h3 class="text-center font-medium mb-4">{{ chart.title }}</h3>
+                <div style="height: 280px; width: 100%;">
+                    {{ chart.plot_div_small|safe }}
+                </div>
+            </div>
+            {% endfor %}
+
+        </div>
+    </div>
+
+    <!-- Modal ocult inicialment -->
+    {% for chart in charts %}
+    <div id="chartModal_{{ forloop.counter0 }}" class="fixed inset-0 bg-black bg-opacity-60 items-center justify-center z-50 hidden">
+        <div class="bg-white rounded-xl p-4 max-w-5xl w-full relative">
+            <button onclick="closeModal('{{ forloop.counter0 }}')" class="absolute top-2 right-4 text-xl text-gray-500 hover:text-black">&times;</button>
+            {{ chart.plot_div_large|safe }}
+        </div>
+    </div>
+    {% endfor %}
+
+    <script>
+        function openModal(index) {
+            const modal = document.getElementById('chartModal_' + index);
+            modal.classList.remove('hidden');
+            modal.classList.add('flex');
+        }
+
+        function closeModal(index) {
+            index = parseInt(index);
+            const modal = document.getElementById('chartModal_' + index);
+            modal.classList.add('hidden');
+            modal.classList.remove('flex');
+        }
+    </script>
+
+    <p><a href="{% url 'screener' %}">Tornar al screener</a></p>
+    
+    <h2 class="text-2xl font-semibold mb-4">Dades fonamentals</h2>
+
+    <div class="overflow-x-auto">
+    <table class="min-w-full bg-white border border-gray-200 rounded-lg shadow-sm">
+        <thead class="bg-gray-100">
+        <tr>
+            <th class="py-3 px-6 text-left text-sm font-medium text-gray-700">Data</th>
+            <th class="py-3 px-6 text-right text-sm font-medium text-gray-700">Ingressos (Revenue)</th>
+            <th class="py-3 px-6 text-right text-sm font-medium text-gray-700">Benefici Net (Net Income)</th>
+            <th class="py-3 px-6 text-right text-sm font-medium text-gray-700">PER</th>
+            <th class="py-3 px-6 text-right text-sm font-medium text-gray-700">ROE</th>
+            <th class="py-3 px-6 text-right text-sm font-medium text-gray-700">Dividend</th>
+        </tr>
+        </thead>
+        <tbody>
+        {% for f in fundamentals %}
+        <tr class="border-t border-gray-200 hover:bg-gray-50">
+            <td class="py-3 px-6 whitespace-nowrap text-sm text-gray-800">{{ f.date }}</td>
+            <td class="py-3 px-6 whitespace-nowrap text-sm text-right text-gray-800">
+            {{ f.revenue|default:"-"|floatformat:2 }}
+            </td>
+            <td class="py-3 px-6 whitespace-nowrap text-sm text-right text-gray-800">
+            {{ f.net_income|default:"-"|floatformat:2 }}
+            </td>
+            <td class="py-3 px-6 whitespace-nowrap text-sm text-right text-gray-800">
+            {{ f.pe_ratio|default:"-" }}
+            </td>
+            <td class="py-3 px-6 whitespace-nowrap text-sm text-right text-gray-800">
+            {{ f.roe|default:"-" }}
+            </td>
+            <td class="py-3 px-6 whitespace-nowrap text-sm text-right text-gray-800">
+            {{ f.dividend|default:"-"|floatformat:2 }}
+            </td>
+        </tr>
+        {% endfor %}
+        </tbody>
+    </table>
+    </div>
+
+    
+</body>
+</html>

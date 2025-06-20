@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html lang="ca">
+<head>
+    <meta charset="UTF-8" />
+    <title>Screener Stocks</title>
+</head>
+<body>
+    <h1>Screener de Stocks</h1>
+
+    <form method="get">
+        {{ form.as_p }}
+        <button type="submit">Filtrar</button>
+    </form>
+
+    <h2>Resultats ({{ stocks.count }})</h2>
+
+    <table border="1" cellpadding="5" cellspacing="0">
+        <thead>
+            <tr>
+                <th>Ticker</th>
+                <th>Nom</th>
+                <th>Sector</th>
+                <th>Capitalització</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for stock in stocks %}
+            <tr>
+                <td><a href="{% url 'stock_detail' stock.ticker %}">{{ stock.ticker }}</a></td>
+                <td>{{ stock.name }}</td>
+                <td>{{ stock.sector }}</td>
+                <td>{{ stock.market_cap|floatformat:2 }}</td>
+            </tr>
+            {% empty %}
+            <tr><td colspan="4">No s'han trobat resultats.</td></tr>
+            {% endfor %}
+        </tbody>
+    </table>
+
+    <hr>
+
+    <h2>Importar dades d'empreses</h2>
+    <form method="post" action="{% url 'importar' %}">
+        {% csrf_token %}
+        <label for="tickers">Introdueix tickers separats per coma (ex: AAPL, MSFT, GOOG):</label><br>
+        <textarea name="tickers" id="tickers" rows="3" cols="40"></textarea><br>
+        <button type="submit">Importar dades</button>
+    </form>
+</body>
+</html>

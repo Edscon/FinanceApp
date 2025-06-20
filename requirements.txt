@@ -1,0 +1,4 @@
+django 
+matplotlib 
+yfinance
+plotly
