@@ -40,9 +40,8 @@ def update_or_crate_company(ticker):
             print("Info bàsica de l'empresa actualitzada.")
     return company
 
-def update_or_crate_income_statment(ticker, company):
-    ## MODIFICAR EL PERIOD PER TOTS ELS TRIMESTRES!!
-        url = f"https://financialmodelingprep.com/stable/income-statement?symbol={ticker}&period=Q4&apikey={settings.FMP_API_KEY}"
+def update_or_crate_income_statment(ticker, company, q):
+        url = f"https://financialmodelingprep.com/stable/income-statement?symbol={ticker}&period=Q{q}&apikey={settings.FMP_API_KEY}"
         data = get_data_response(url)
         created, updated = 0, 0
         for item in data:
@@ -55,6 +54,7 @@ def update_or_crate_income_statment(ticker, company):
                 continue
 
             defaults = {
+                'period_end': period_end,
                 'fiscal_year': item.get('fiscalYear'),
                 'period': item.get('period'),
                 'reported_currency': item.get('reportedCurrency'),
@@ -97,7 +97,8 @@ def update_or_crate_income_statment(ticker, company):
 
             obj, was_created = FundamentalsQuarter.objects.update_or_create(
                 company=company,
-                period_end=period_end,
+                fiscal_year=item.get('fiscalYear'),
+                period=item.get('period'),
                 defaults=defaults
             )
 
@@ -113,42 +114,58 @@ def update_or_crate_dividends(ticker, company):
     data = get_data_response(url)
 
     dividends_by_quarter = defaultdict(float)  # Clau: (any, trimestre) -> suma dividends
-    for item in data:
-        date_str = item.get('date')
-        dividend = item.get('adjDividend', 0)
-        if not date_str:
-            continue
-        date = datetime.strptime(date_str, "%Y-%m-%d")
-        quarter = (date.month - 1) // 3 + 1
+    if data:
+        for item in data:
+            date_str = item.get('date')
+            dividend = item.get('adjDividend', 0)
+            if not date_str:
+                continue
+            date = datetime.strptime(date_str, "%Y-%m-%d")
+            quarter = (date.month - 1) // 3 + 1
 
-        key = (date.year, quarter)
-        dividends_by_quarter[key] += dividend
+            key = (date.year, quarter)
+            dividends_by_quarter[key] += dividend
+        
+        for divident in dividends_by_quarter.items():
+            year, quarter = divident[0]
+            adj_divident = divident[1]
+            try:
+                obj = FundamentalsQuarter.objects.get(company=company, fiscal_year=year, period=f"Q{quarter}")
+                obj.adj_dividend = adj_divident
+                obj.save()
+            except FundamentalsQuarter.DoesNotExist:
+                FundamentalsQuarter.objects.create(
+                    company=company,
+                    fiscal_year=year,
+                    reported_currency=company.currency,
+                    period=f"Q{quarter}",
+                    adj_dividend=adj_divident
+                )
+                continue
     
-    for divident in dividends_by_quarter.items():
-        year, quarter = divident[0]
-        adj_divident = divident[1]
-        print(f"Any: {year}, Trimestre: {quarter}, Dividends: {adj_divident}")
-        obj = FundamentalsQuarter.objects.get(company=company, fiscal_year=year, period=f"Q{quarter}")
-        obj.adj_dividend = adj_divident
-        obj.save()
-    print(dividends_by_quarter)
 
 class Command(BaseCommand):
     help = 'Importa dades de FMP per a un ticker'
 
     def add_arguments(self, parser):
-        parser.add_argument('ticker', type=str)
+        parser.add_argument('tickers', nargs='*', type=str, help='Lista de símbolos')
 
     def handle(self, *args, **options):
-        ticker = options['ticker'].upper()
-        print(f"Important dades per {ticker}...")
+        tickers = options['tickers']
+        if not tickers:
+            # Si no pasas tickers, usa una lista fija
+            tickers = ['AAPL', 'MSFT', 'TSLA']
+        
+        for ticker in tickers:
+            self.stdout.write(f'Procesant dades per {ticker}...')
 
-        # 1) Obtenir o crear Company
-        company = update_or_crate_company(ticker)
+            # 1) Obtenir o crear Company
+            company = update_or_crate_company(ticker)
 
-        # 2) Income statement trimestral
-        #update_or_crate_income_statment(ticker, company)
+            # 2) Income statement trimestral
+            for q in range(1, 5):
+                update_or_crate_income_statment(ticker, company, q)
 
-        # 3) Dividends
-        update_or_crate_dividends(ticker, company)
+            # 3) Dividends
+            update_or_crate_dividends(ticker, company)
 

@@ -16,13 +16,13 @@ class FundamentalsQuarter(models.Model):
     company  = models.ForeignKey('screener.Company', on_delete=models.CASCADE, related_name='quarters')
 
     # Metadades del període
-    period_end  = models.DateField(db_index=True)          # 'date' (fi de trimestre)
+    period_end  = models.DateField(db_index=True, null=True)          # 'date' (fi de trimestre)
     fiscal_year = models.PositiveIntegerField()
     period      = models.CharField(max_length=4)           # Q1 / Q2 / Q3 / Q4
     reported_currency = models.CharField(max_length=8)
-    cik         = models.CharField(max_length=16)
-    filing_date = models.DateField()
-    accepted_date = models.DateTimeField()
+    cik         = models.CharField(max_length=16, null=True)
+    filing_date = models.DateField(null=True)
+    accepted_date = models.DateTimeField(null=True)
 
     # Income‑statement
     revenue                               = models.DecimalField(max_digits=20, decimal_places=0, null=True)
