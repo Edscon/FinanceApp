@@ -1,8 +1,7 @@
 from django.shortcuts import render, redirect
 from django.views.decorators.http import require_POST
-from .models import Stock
+#from .models import Stock
 from .forms import StockFilterForm
-from .import_data import importar_dades_yfinance, importar_dades_alphavantage
 from django.shortcuts import get_object_or_404
 import plotly.graph_objs as go
 from plotly.offline import plot
