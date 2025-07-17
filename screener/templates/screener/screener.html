@@ -38,13 +38,5 @@
     </table>
 
     <hr>
-
-    <h2>Importar dades d'empreses</h2>
-    <form method="post" action="{% url 'importar' %}">
-        {% csrf_token %}
-        <label for="tickers">Introdueix tickers separats per coma (ex: AAPL, MSFT, GOOG):</label><br>
-        <textarea name="tickers" id="tickers" rows="3" cols="40"></textarea><br>
-        <button type="submit">Importar dades</button>
-    </form>
 </body>
 </html>

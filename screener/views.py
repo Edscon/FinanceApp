@@ -1,6 +1,6 @@
 from django.shortcuts import render, redirect
 from django.views.decorators.http import require_POST
-#from .models import Stock
+from .models import Company
 from .forms import StockFilterForm
 from django.shortcuts import get_object_or_404
 import plotly.graph_objs as go
@@ -10,7 +10,7 @@ from django.utils.timezone import now
 
 def screener_view(request):
     form = StockFilterForm(request.GET or None)
-    stocks = Stock.objects.all()
+    stocks = Company.objects.all()
 
     if form.is_valid():
         sector = form.cleaned_data.get('sector')
@@ -29,52 +29,88 @@ def screener_view(request):
         'stocks': stocks,
     })
 
-@require_POST
-def importar_view(request):
-    # Obtenir tickers des del formulari (per exemple textarea)
-    tickers_text = request.POST.get('tickers', '')
-    tickers = [t.strip().upper() for t in tickers_text.split(',') if t.strip()]
+# Stock View
+def generate_chart(fundamentals, ticker, field, title, color, frequency='yearly'):
+    current_year = now().year
+    current_quarter = (now().month - 1) // 3 + 1
 
-    if tickers:
-        #importar_dades_yfinance(tickers)
-        importar_dades_alphavantage(tickers)
+    quarter_map = {'Q1': '01', 'Q2': '02', 'Q3': '03', 'Q4': '04'}
+    quarter_label = {'Q1': 'Q1', 'Q2': 'Q2', 'Q3': 'Q3', 'Q4': 'Q4'}
 
-    return redirect('screener')
+    data = []
 
+    for f in fundamentals:
+        value = getattr(f, field)
+        if value is None:
+            continue
 
-def generate_chart(fundamentals, ticker, field, title, color):
-    # Filtrar dades vàlides abans de l’any actual
-    data = [
-        (f.date.year, getattr(f, field))
-        for f in fundamentals
-        if getattr(f, field) is not None and f.date.year < now().year
-    ]
+        if frequency == 'yearly':
+            if f.fiscal_year < current_year:
+                data.append((f.fiscal_year, value))
 
-    # Sumar per any
-    data_dict = {}
-    for year, val in data:
-        data_dict[year] = data_dict.get(year, 0) + val
-    sorted_data = sorted(data_dict.items())
+        elif frequency == 'quarterly':
+            year = f.fiscal_year
+            period = f.period
+            if period not in quarter_map:
+                continue
 
-    # Detectar grans buits (només per dividends)
+            year_period_int = int(f"{year}{quarter_map[period]}")
+            max_year_period = int(f"{current_year}{current_quarter:02d}")
+
+            if year_period_int < max_year_period:
+                key = f"{year}-Q{quarter_map[period]}"  # ex: 2024-Q1
+                data.append((key, value))
+
+    if frequency == 'yearly':
+        # Sumar per any
+        data_dict = {}
+        for year, val in data:
+            data_dict[year] = data_dict.get(year, 0) + val
+        sorted_data = sorted(data_dict.items())
+
+    elif frequency == 'quarterly':
+        def quarter_key(qstr):
+            year, q = qstr.split('-Q')
+            return int(year) * 10 + int(q)
+
+        sorted_data = sorted(data, key=lambda x: quarter_key(x[0]))
+
+    # Detectar grans buits només per dividends
     start_index = 0
-    if field == 'dividend':
-        for i in range(1, len(sorted_data)):
-            if sorted_data[i][0] - sorted_data[i - 1][0] > 5:
-                start_index = i
+    if field == 'adj_dividend':
+        if frequency == 'yearly':
+            for i in range(1, len(sorted_data)):
+                if int(sorted_data[i][0]) - int(sorted_data[i - 1][0]) > 5:
+                    start_index = i
+
+        elif frequency == 'quarterly':
+            def next_expected(period_str):
+                year, q = period_str.split('-Q')
+                year, quarter = int(year), int(q)
+                if quarter == 4:
+                    return f"{year + 1}-Q1"
+                else:
+                    return f"{year}-Q{quarter + 1}"
+
+            for i in range(1, len(sorted_data)):
+                expected = next_expected(sorted_data[i - 1][0])
+                if sorted_data[i][0] != expected:
+                    start_index = i
+
     filtered_data = sorted_data[start_index:]
 
-    years = [y for y, v in filtered_data]
-    values = [v for y, v in filtered_data]
+    x_labels = [x for x, _ in filtered_data]
+    y_values = [y for _, y in filtered_data]
 
-    bar = go.Bar(x=years, y=values, marker_color=color)
+    bar = go.Bar(x=x_labels, y=y_values, marker_color=color)
 
+    # Small chart
     small_layout = go.Layout(
         autosize=True,
         margin=dict(l=30, r=30, t=30, b=30),
         template='plotly_white',
         title='',
-        xaxis_title='Any',
+        xaxis_title='Període',
         yaxis_title=title,
         showlegend=False,
         xaxis=dict(tickangle=-45),
@@ -84,30 +120,32 @@ def generate_chart(fundamentals, ticker, field, title, color):
     plot_div_small = plot(fig_small, output_type='div', include_plotlyjs=False,
                           config={'displayModeBar': False, 'responsive': True})
 
-
-    
+    # Large chart
     large_layout = go.Layout(
         height=500, width=900, margin=dict(l=50, r=50, t=50, b=50),
-        template='plotly_white', title=f'{title} de {ticker}',
-        xaxis_title='Any', yaxis_title=title
+        template='plotly_white',
+        title=f'{title} de {ticker}',
+        xaxis_title='Període',
+        yaxis_title=title
     )
     fig_large = go.Figure(data=[bar], layout=large_layout)
     plot_div_large = plot(fig_large, output_type='div', include_plotlyjs=False,
-                            config={'displayModeBar': False})
-        
+                          config={'displayModeBar': False})
 
-    result = {'title': title, 'plot_div_small': plot_div_small, 'plot_div_large': plot_div_large}
-
-    return result
+    return {
+        'title': title,
+        'plot_div_small': plot_div_small,
+        'plot_div_large': plot_div_large
+    }
 
 def stock_detail_view(request, ticker):
-    stock = get_object_or_404(Stock, ticker=ticker.upper())
-    fundamentals = stock.fundamental_set.order_by('-date')
+    stock = get_object_or_404(Company, ticker=ticker.upper())
+    fundamentals = stock.quarters.order_by('-period_end')  # relació nova
 
     charts = [
-        generate_chart(fundamentals, stock.ticker, 'dividend', 'Dividend', 'green'),
-        generate_chart(fundamentals, stock.ticker, 'price', 'Precio', 'blue'),
-        generate_chart(fundamentals, stock.ticker, 'pe_ratio', 'PER', 'orange'),
+        generate_chart(fundamentals, stock.ticker, 'adj_dividend', 'Dividend', 'green'),
+        generate_chart(fundamentals, stock.ticker, 'eps', 'EPS', 'blue'),
+        generate_chart(fundamentals, stock.ticker, 'revenue', 'Ingresos', 'orange'),
     ]
 
     context = {
