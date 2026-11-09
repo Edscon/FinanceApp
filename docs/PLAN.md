@@ -1,183 +1,98 @@
-# Plan: detección de gaps entre valores correlacionados
+# Plan: sistema de detección de gaps entre valores correlacionados
 
 Sistema de trading algorítmico que detecta *gaps* (desviaciones anómalas) entre títulos que
-normalmente se mueven juntos. Este documento recoge el plan, las decisiones de diseño y el
-estado de cada fase; se actualiza a medida que avanza el proyecto.
+normalmente se mueven juntos. Este documento recoge el plan, las decisiones de diseño y el estado de
+cada fase. La investigación de estrategias y el veredicto con datos reales están en
+[ESTRATEGIAS.md](ESTRATEGIAS.md).
 
 > No es asesoramiento financiero. Ningún backtest garantiza resultados y operar puede causar
 > pérdidas.
 
-## 1. Idea y supuestos
+## 1. Idea y principio rector
 
-- **Gap** = desviación anómala entre dos (o más) títulos que normalmente se mueven juntos, con la
-  apuesta de que vuelven a su relación habitual (arbitraje estadístico / *pairs trading*).
-- MVP: acciones líquidas de EE. UU., barras diarias, uso personal, largo/corto neutral al mercado.
-- **Principio rector:** no se construye la ejecución de órdenes hasta que un backtest realista
-  demuestre que hay ventaja. La interfaz es lo fácil; lo difícil es saber si la ventaja existe.
+- **Gap** = desviación anómala de un valor frente a los que se mueven con él (su grupo o su par),
+  con la apuesta de que se cierra.
+- **No se construye ejecución de órdenes hasta que un backtest realista demuestre ventaja.** Ahora
+  mismo la app es solo de backtesting, sin broker.
 
-## 2. Tipos de gap
+## 2. Estado
 
-| Tipo | Idea | Datos | Cuándo |
-|---|---|---|---|
-| **Spread** | `log y − α − β·log x` se aleja más de 2σ de su media: se apuesta a la convergencia | diario, luego 5–15 min | MVP (implementado) |
-| **Apertura relativo** | y abre con gap y su par x no: `gap_y − β·gap_x` fuera de lo normal | OHLC diario | Fase 2 (mismo motor de pares) |
-| **Lead–lag** | y se mueve y x reacciona con retraso de segundos o minutos | tick / 1 s | Opcional: exige baja latencia y es lo primero que se arbitra |
+| Fase | Contenido | Estado |
+|---|---|---|
+| 0. Higiene | Repo limpio, configuración por entorno | ✔ Hecho. **Falta rotar la `FMP_API_KEY`** (estuvo versionada) |
+| 1. Datos e investigación | Precios ajustados (Yahoo, FMP, CSV), universos, escáner de pares, calibración del test | ✔ Hecho |
+| 2. Backtest realista | Motor con ejecución en t+1, costes, walk-forward, robustez, puerta y web | ✔ Hecho. **Puerta no superada** con ninguna estrategia (ver ESTRATEGIAS.md) |
+| 3. Web de señales en vivo | Escáner diario con alertas | ⏸ En pausa: no tiene sentido sin una estrategia que supere la puerta |
+| 4. Paper trading y ejecución | Broker, órdenes, gestión de riesgo | ⏸ En pausa (misma razón) |
 
-**Correlación no es cointegración.** Dos acciones con ρ = 0,9 pueden divergir de forma permanente.
-La correlación solo *preselecciona* candidatos; para operar, el spread debe ser estacionario.
+**Decisión según la puerta:** las estrategias probadas no justifican pasar a la Fase 3. Los
+siguientes pasos razonables son de investigación, y cada uno debe declararse antes de ejecutarlo
+(sección 6 de ESTRATEGIAS.md).
 
 ## 3. Arquitectura
 
 ```
-engine/                   núcleo cuantitativo en Python puro (sin Django)
-  data/providers.py       FMP y CSV -> barras ajustadas (Bar)
-  data/synthetic.py       series con estructura conocida, para tests y demos
-  research/stats.py       OLS, half-life, Engle-Granger, FDR, z-score
-  research/pairs.py       find_pairs(): candidatos -> cointegración -> ranking
-  research/report.py      informe de texto
-  calibration.py          potencia y tamaño del test, por simulación
-pairs/                    app Django: DailyBar, import_prices, find_pairs
-screener/                 screener fundamental (anterior al sistema de pares)
+engine/                     Python puro, sin Django (mismo código en notebooks, backtests y web)
+  data/providers.py         Yahoo, FMP, CSV -> barras ajustadas
+  data/synthetic.py         mercados sintéticos con estructura conocida (tests y demo)
+  research/                 estadística de pares, find_pairs, informe
+  backtest/                 config, MarketData, MarketView, simulador, métricas, robustez
+  backtest/strategies/      reversión intra-sector, pares walk-forward
+  calibration.py            potencia y tamaño del test de cointegración
+core/                       cola de trabajos en BD (hilo en el servidor o run_worker), layout, panel
+market/                     Instrument, DailyBar, Universe; importación; presets; demo
+backtests/                  BacktestRun, Trade, SelectionCache; páginas; escáner y página de par
 ```
 
-- `engine/` no depende de Django: el mismo código sirve en notebooks, backtests y en el proceso
-  en vivo (menos sorpresas al pasar a real). Django solo persiste datos y muestra resultados.
-- Los procesos largos (datos, señales, órdenes) irán como *workers* aparte, no dentro de las
-  peticiones web.
-- SQLite basta para las Fases 1–2: cargar 300 valores × 5 años (378.000 barras) tardó 26 s
-  (fichero de 35 MB) y escanear 3.790 pares candidatos, 19 s. PostgreSQL (y TimescaleDB si se pasa
-  a intradía) llega cuando haya *workers* concurrentes.
+- **Stack:** Django 5.2 + HTMX 2 + Tailwind v4 + TradingView Lightweight Charts 5, todo servido
+  localmente.
+- **Base de datos:** SQLite en modo WAL, suficiente para uso local (300 valores × 5 años se cargan
+  en ~25 s).
 
-## 4. Motor de detección (`find_pairs`)
+## 4. Decisiones de diseño del motor
 
-1. **Ventana:** últimas `lookback` sesiones (504 por defecto); se descartan los tickers con huecos.
-2. **Candidatos:** pares del mismo grupo (sector/industria) con correlación de retornos ≥ `min_corr`.
-3. **Validación:** test de Engle-Granger sobre log-precios ajustados, **en las dos orientaciones**
-   (se queda con el mejor p-valor multiplicado por 2), corrección **FDR de Benjamini-Hochberg** por
-   el número de pares probados, half-life (AR(1)) dentro de `[min_hl, max_hl]`.
-4. **Señal:** z-score del spread. `|z| ≥ entry_z` (2 por defecto) marca el gap; z > 0 significa `y`
-   caro frente a `x` (corto `y`, largo `x`). Como β se estima en logaritmos, el ratio de nocionales
-   es 1 : β.
-5. **Diagnóstico de estabilidad:** ¿sigue cointegrando en cada mitad de la ventana (p ≤ 0,10)?
-   Informativo, no filtra.
+- **Una sola regla temporal.** La estrategia decide al cierre de t viendo solo datos hasta t
+  (arrays truncados y de solo lectura) y se ejecuta en t+1, por defecto al cierre. Las aperturas
+  gratuitas son ruidosas y generan reversión falsa. Un test altera el futuro y comprueba que el
+  pasado no cambia.
+- **Contabilidad por acciones:**
+  - comisión y deslizamiento en pb;
+  - préstamo de cortos por días naturales;
+  - cierre forzado tras más de 3 sesiones sin precio;
+  - liquidación al final.
+  La atribución por valor suma exactamente el equity.
+- **Pares:**
+  - Selección solo con la formación: Engle-Granger en las dos orientaciones, FDR y half-life.
+  - α, β y σ del spread quedan fijos en la operativa.
+  - La selección (la parte cara) se cachea y las variantes la reutilizan.
+- **Escáner:** los parámetros se estiman sin la última sesión, para que el propio gap no contamine
+  el test que califica al par.
+- **Valores por defecto fijados antes de ver datos** y contador de configuraciones probadas, como
+  defensa contra el sobreajuste.
 
-### Decisiones de diseño y por qué
+## 5. Lo medido
 
-- **Holdout:** los parámetros (correlación, cointegración, β, half-life, media y σ del spread) se
-  estiman **sin la última sesión**; esa sesión solo mide el gap. Si entrara en la estimación, un
-  salto grande en la última sesión empeora el propio test que califica al par y puede hacerlo
-  desaparecer justo cuando más interesa (se observó en simulación). Es coherente con la
-  "recalibración nocturna" prevista: parámetros de ayer, z de hoy.
-- **Dos orientaciones + ×2:** Engle-Granger no es simétrico; probar las dos y quedarse con la mejor
-  sin corregir inflaría los falsos positivos.
-- **FDR sobre los pares probados:** con 100 acciones hay ~4.950 pares; algunos "cointegrarán" por
-  puro azar.
-- **Precios ajustados** por splits y dividendos: valen para retornos y spreads, **no** para
-  dimensionar órdenes en acciones (ahí hará falta el precio real).
+- **Potencia del test de cointegración** (`python -m engine.calibration`), con 504 sesiones:
+  - detecta el 100 % de los pares con half-life ≤ 7 días, el 98 % a 10, el 64 % a 15 y el 24 % a 30;
+  - con 756 sesiones, el 96 % a 15 días;
+  - falsos positivos: 4–6 %.
+- **Resultado con datos reales:** ESTRATEGIAS.md, sección 4.
 
-### Lo que aún NO hace el escáner
+## 6. Riesgos y límites conocidos
 
-Filtros de earnings/noticias (un gap con noticia tiende a continuar, no a revertir), liquidez,
-*halts*, coste esperado frente a beneficio esperado, clustering jerárquico y estimación de β con
-filtro de Kalman. Están previstos; hasta entonces los resultados son una lista de candidatos, no
-de operaciones.
+- **Sesgo de supervivencia:** los universos son los de hoy; un resultado positivo sería optimista.
+  Ya se vio en vivo con BK (ahora BNY) y con EA, EQR y AVB, que dejaron de cotizar en 2026.
+- **Ajustes de Yahoo:** pueden ser erróneos en escisiones (p. ej. DHR en 2016). La app marca los
+  movimientos diarios extremos.
+- **Costes:** deciden el resultado. El break-even por lado se muestra en cada backtest.
+- **Regulación (si algún día se opera):** para uso personal normalmente no aplica. Dar señales a
+  terceros o mostrar datos en tiempo real sí puede requerir licencias.
 
-## 5. Lo que se ha medido
+## 7. Próximos pasos posibles
 
-`python -m engine.calibration` simula pares con cointegración real y sin ella. Con **504 sesiones**
-(100 pares por fila, ±5 puntos de ruido de muestreo):
-
-| Half-life real | 3–7 d | 10 d | 15 d | 20 d | 30 d |
-|---|---|---|---|---|---|
-| Pares detectados | 100 % | 98 % | 64 % | 40 % | 24 % |
-
-Falsos positivos (nominal 5 %): 4 % con caminos independientes y 6 % con pares correlados (~0,8)
-por un factor común pero sin cointegración.
-
-- Con ~2 años de datos diarios el test **solo ve con fiabilidad reversiones de hasta ~10–15 días**.
-  Que un par con half-life largo no aparezca no significa que no cointegre.
-- Una ventana de **756 sesiones** sube la detección a 100 % (10 d), 96 % (15 d), 80 % (20 d) y 34 %
-  (30 d), a costa de más riesgo de cambios estructurales en el periodo.
-- Una ventana de **300 sesiones** empeora todo: detecta 51 % a 10 d y los falsos positivos con
-  caminos independientes suben al 7,5 %. No usar ventanas cortas.
-- **A escala** (una simulación: 300 valores en 10 sectores muy correlados, con 10 pares cointegrados
-  sembrados y 3.790 pares probados): con 504 sesiones aparecen 9 de los 10 y ningún falso positivo;
-  con 756 sesiones, los 10. Corregir por tests múltiples cuesta algo de potencia cuando se prueban
-  miles de pares; una ventana más larga la recupera.
-
-## 6. Backtesting y puertas de decisión (Fase 2)
-
-- Costes realistas: comisión + spread + slippage + **coste y disponibilidad del corto**; ejecución
-  en la barra siguiente, nunca al precio de la señal.
-- Sin sesgos: universo con valores deslistados (si no, el resultado sale inflado), precios
-  ajustados, sin *look-ahead*.
-- Walk-forward (formación → trading) y sensibilidad: costes ×2, parámetros ±20 %.
-- **Puerta:** no se construye ejecución hasta que la ventaja sobreviva fuera de muestra y con costes
-  ×1,5 (p. ej. Sharpe neto > 1; umbral a fijar al empezar la Fase 2).
-
-## 7. Web (Fase 3)
-
-Dashboard (equity, P&L, posiciones, salud de feeds), scanner (pares ordenados por |z|, filtros,
-alertas, heatmap de correlaciones), detalle de par (precios normalizados, spread con bandas ±1/2/3σ,
-correlación y p-valor rodantes, β, half-life, marcas de earnings), laboratorio de backtests, operativa
-(modo manual o automático, **kill switch**) y riesgo/ajustes (límites, alertas por Telegram o email,
-auditoría señal → orden → fill). Con barras diarias basta recalcular cada N minutos con el último
-precio; el streaming tick a tick solo hace falta para lead–lag.
-
-## 8. Ejecución y riesgo (Fase 4)
-
-- Modos progresivos: solo alertas → semiautomático → automático (solo tras paper trading).
-- Interactive Brokers (cortos, paper, disponible en España) con `ib_async`, detrás de una interfaz
-  `BrokerAdapter`; Alpaca si opera en el país del usuario.
-- Controles antes de cada orden: riesgo por par ≈ 0,25–0,5 % del capital en el stop, neutral en
-  dólares y beta, máximo de pares simultáneos y por sector, pérdida diaria máxima, kill switch por
-  drawdown.
-- Riesgo de *legging* (una pata ejecutada y la otra no): órdenes combinadas donde el broker las
-  soporte, o ejecución secuencial con *rollback*. Conciliación periódica con el broker.
-
-## 9. Hoja de ruta y estado
-
-| Fase | Entregable | Estado |
-|---|---|---|
-| 0. Higiene y definición | Repo limpio, configuración por entorno | ✔ Hecho. **Falta rotar la `FMP_API_KEY`** (estuvo versionada). PostgreSQL pospuesto |
-| 1. Datos e investigación | Precios ajustados, `DailyBar`, `import_prices`, `find_pairs`, calibración | ✔ Código y tests. ⏳ Falta probar `import_prices` contra la API real de FMP y escanear datos reales. ☐ Clustering jerárquico |
-| 2. Backtest realista | Simulador con costes, walk-forward, informe, gap de apertura relativo | ☐ |
-| 3. Scanner web (solo señales) | Dashboard, scanner, detalle de par, alertas | ☐ |
-| 4. Paper trading | Adaptador IBKR, OMS, risk manager, kill switch; ≥ 6–8 semanas en paper | ☐ |
-| 5. Real con poco capital | Tamaño mínimo, escalado por reglas, revisión semanal | ☐ |
-| 6. Mejoras | Kalman, tripletas o cestas, intradía, lead–lag, otros mercados | ☐ |
-
-**Puerta de la Fase 1:** ¿hay pares estables fuera de muestra? Hoy solo se puede responder en
-muestra; la respuesta honesta llega con el walk-forward de la Fase 2.
-
-### Siguientes pasos inmediatos
-
-1. Rotar la clave de FMP y crear `.env` a partir de `.env.example`.
-2. Probar `import_prices` con un ticker y una ventana corta (valida el parser contra la API real:
-   los nombres de las claves JSON de FMP no se pudieron contrastar al desarrollarlo).
-3. Importar un universo (50–100 valores líquidos con sector) y ejecutar `find_pairs`.
-4. Fijar los umbrales de éxito de la Fase 2 antes de ver resultados de backtest.
-
-## 10. Riesgos
-
-- **Tests múltiples y sobreajuste:** FDR, validación fuera de muestra y no calibrar sobre toda la
-  muestra.
-- **Ruptura de la relación** (fusión, resultados, cambio de negocio): stop, *time stop* de 2–3× el
-  half-life, re-test rodante y calendario de earnings.
-- **Costes:** el pairs trading clásico en EE. UU. tiene poco margen y está muy competido; los
-  costes deciden si hay negocio.
-- **Datos y regulación:** mostrar datos en tiempo real a terceros exige licencia de mercado, y dar
-  señales a otros usuarios puede ser actividad regulada (CNMV / MiFID II). Para uso personal
-  normalmente no aplica. Si se opera desde la UE, los ETFs de EE. UU. suelen estar vetados a
-  minoristas (PRIIPs): usar acciones o ETFs UCITS.
-
-## 11. Decisiones abiertas (por defecto)
-
-| Decisión | Por defecto |
-|---|---|
-| Universo | Acciones líquidas de EE. UU. (S&P 500 por sector) |
-| Horizonte | Diario en el MVP, intradía después |
-| Posiciones | Largo/corto neutral (requiere poder abrir cortos) |
-| Datos | FMP (comprobar qué incluye el plan: histórico, intradía, límites); `yfinance` solo para prototipar |
-| Broker | Interactive Brokers, primero paper |
-| Uso | Personal |
+Solo de investigación, y cada uno declarado antes de ejecutarlo:
+- Costes por valor según su diferencial real.
+- Menos rotación: bandas, cuantiles o solo los gaps extremos.
+- Residuos frente a factores.
+- Universos con más dispersión.
+- Datos sin sesgo de supervivencia.

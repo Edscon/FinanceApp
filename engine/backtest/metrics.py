@@ -133,7 +133,7 @@ def compute_metrics(
             first, last = np.flatnonzero(valid)[0], np.flatnonzero(valid)[-1]
             b_ret = bench[1:] / bench[:-1] - 1.0
             mask = np.isfinite(b_ret)
-            if mask.sum() > 2 and np.var(b_ret[mask]) > 0:
+            if mask.sum() > 2 and np.var(b_ret[mask]) > 0 and np.var(returns[mask]) > 0:
                 cov = np.cov(returns[mask], b_ret[mask])
                 metrics['beta'] = float(cov[0, 1] / cov[1, 1])
                 metrics['correlation'] = float(np.corrcoef(returns[mask], b_ret[mask])[0, 1])

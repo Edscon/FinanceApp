@@ -37,6 +37,16 @@ class MetricsTests(unittest.TestCase):
         self.assertAlmostEqual(m['monthly'][2024][1], 0.1)
         self.assertAlmostEqual(m['monthly'][2024][2], 0.1)
 
+    def test_flat_equity_gives_no_beta_and_no_warnings(self):
+        import warnings
+
+        dates = pd.bdate_range('2024-01-01', periods=50)
+        with warnings.catch_warnings():
+            warnings.simplefilter('error')
+            m = compute_metrics(dates, [100.0] * 50, benchmark=np.linspace(100, 120, 50))
+        self.assertNotIn('beta', m)
+        self.assertTrue(math.isnan(m['sharpe']))
+
     def test_benchmark_beta(self):
         dates = pd.bdate_range('2024-01-01', periods=300)
         rng = np.random.default_rng(0)

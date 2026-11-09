@@ -1,99 +1,89 @@
 # FinanceApp
 
-Un proyecto Django con dos partes:
+App web local para **hacer backtesting** de estrategias de *gaps* entre valores correlacionados: cuando
+un valor se separa de los que normalmente se mueven con él, ¿compensa apostar a que vuelve? Solo
+backtesting: no hay broker ni órdenes reales.
 
-- **`screener/`**: screener fundamental (ingresos, EPS, dividendos) alimentado desde
-  [Financial Modeling Prep](https://site.financialmodelingprep.com/) (FMP).
-- **`pairs/` + `engine/`**: detección de *gaps* entre valores correlacionados (pairs trading /
-  arbitraje estadístico). Plan, decisiones de diseño y estado: [docs/PLAN.md](docs/PLAN.md).
+**Resultado con datos reales (2010–2026):** ninguna de las estrategias probadas gana dinero de forma
+fiable tras costes. Detalle, fuentes y cifras en [docs/ESTRATEGIAS.md](docs/ESTRATEGIAS.md).
 
-> Lo que produce el escáner es **en muestra**: todavía no hay backtest fuera de muestra ni costes
-> (Fase 2 del plan). No es asesoramiento financiero.
+## Qué incluye
+
+- **Datos:**
+  - precios diarios ajustados desde Yahoo Finance (gratis, sin clave), FMP o CSV;
+  - dos universos predefinidos: 144 grandes valores de EE. UU. por sector y 37 ETFs sectoriales;
+  - datos de demostración sintéticos para probar sin internet.
+- **Estrategias:**
+  - **reversión intra-sector** (principal; la de mejor evidencia publicada);
+  - **pares cointegrados en walk-forward** (comparación).
+- **Motor de backtest:**
+  - ejecución en la sesión siguiente;
+  - costes de comisión, deslizamiento y préstamo de cortos;
+  - métricas con el error estándar del Sharpe y el coste de break-even;
+  - variantes de robustez y una puerta de decisión;
+  - tests que comprueban que nunca mira al futuro.
+- **Web:** panel, datos, universos, escáner de pares con gráfico del spread, backtests con gráficos,
+  comparar y exportar a CSV.
 
 ## Puesta en marcha
 
 ```bash
 python -m venv .venv
-source .venv/bin/activate        # Windows (PowerShell): .venv\Scripts\Activate.ps1
+source .venv/bin/activate              # Windows (PowerShell): .venv\Scripts\Activate.ps1
 pip install -r requirements.txt
-cp .env.example .env             # y rellena FMP_API_KEY; .env nunca se sube a git
 python manage.py migrate
-python manage.py runserver
+python manage.py runserver             # http://127.0.0.1:8000
 ```
 
-Estilos (Tailwind), igual que antes:
-`npm install && npx @tailwindcss/cli -i ./static/css/input.css -o ./static/css/output.css --watch`
+Primer uso, en la web:
+1. **Datos → Cargar datos de demostración**, para probar sin internet.
+2. O **Universos → Crear predefinidos** y luego **Descargar precios (Yahoo)**. Tarda ~1,5 minutos
+   para 185 valores desde 2010.
+3. **Backtests → Nuevo**, con los parámetros por defecto (fijados antes de ver datos). Después,
+   **Ejecutar variantes de robustez**.
 
-## Detectar gaps
+Los trabajos largos (importar, backtests) se ejecutan en segundo plano dentro del propio servidor.
+Si prefieres un proceso aparte: `JOBS_MODE=external` y `python manage.py run_worker`.
 
-**1. Importar precios ajustados** de un universo. La primera vez también pide a FMP el sector y la
-industria de cada empresa (hace falta para emparejar solo valores del mismo sector):
+### Desde la línea de comandos
 
 ```bash
-python manage.py import_prices AAPL MSFT GOOGL META NVDA AMD --from 2021-01-01
-python manage.py import_prices --all            # refresca las empresas que ya están en la BD
-python manage.py import_prices AAPL --csv-dir data/prices   # sin API: data/prices/AAPL.csv
+python manage.py load_demo                                   # datos sintéticos
+python manage.py import_prices --presets --from 2010-01-01  # universos predefinidos desde Yahoo
+python manage.py import_prices AAPL MSFT --provider fmp      # FMP (requiere FMP_API_KEY en .env)
+python manage.py run_backtest "US grandes valores" --strategy reversal --robustness
+python -m engine.backtest --demo                             # motor sin Django, sobre datos sintéticos
+python -m engine.calibration --n 504                         # potencia del test de cointegración
 ```
 
-Es idempotente: repetirlo actualiza las barras. Si un ticker falla, los demás se importan igualmente
-y el comando termina con error. Un CSV necesita una cabecera plana con `date` (YYYY-MM-DD) y
-`adj_close` o `close`; vale `Date, Open, High, Low, Close, Adj Close, Volume`, pero no las cabeceras
-de varias filas que exportan las versiones recientes de yfinance.
+## Antes de fiarte de un resultado
 
-**2. Escanear:**
-
-```bash
-python manage.py find_pairs                          # todo el universo, agrupando por sector
-python manage.py find_pairs AAPL MSFT GOOGL --group-by none
-python manage.py find_pairs --lookback 756 --entry-z 2.5 --sort p
-python manage.py find_pairs --as-of 2025-06-30       # reproduce un escaneo pasado
-```
-
-Ejemplo con datos sintéticos (`engine/data/synthetic.py`), con un salto del +12 % en TA en la última
-sesión:
-
-```
-PAR (y / x)  GRUPO       CORR  BETA    P_ADJ  HL(d)      Z  ESTABLE  SEÑAL
-TA / TB      Tecnologia  0.86  1.18  <0.0001    4.3  +4.03       si  CORTO TA / LARGO TB
-EA / EB      Energia     0.82  0.80   0.0002    7.5  +0.55       si  -
-```
-
-| Columna | Significado |
-|---|---|
-| `PAR (y / x)` | `y` es la variable dependiente: `spread = log(y) − α − β·log(x)` |
-| `CORR` | correlación de retornos diarios |
-| `BETA` | ratio de nocionales 1 : β (por cada 1 $ de `y`, β $ de `x`) |
-| `P_ADJ` | p-valor de cointegración (Engle-Granger) corregido por FDR; menor = más evidencia |
-| `HL(d)` | half-life de la reversión, en días |
-| `Z` | desviación del spread de hoy en σ; z > 0: `y` caro frente a `x` |
-| `ESTABLE` | si también cointegra en cada mitad de la ventana (diagnóstico) |
-| `SEÑAL` | si `|z| ≥ --entry-z`: qué pata cortar y cuál comprar |
-
-**Antes de fiarte de la tabla**, lee la sección 5 de [docs/PLAN.md](docs/PLAN.md): con ~2 años de
-datos el test solo ve con fiabilidad reversiones de hasta ~10–15 días. Para half-lives más largos
-sube `--lookback`. Para comprobar qué puede ver tu ventana:
-
-```bash
-python -m engine.calibration --n 756 --seeds 100
-```
+- Los universos son los de hoy: faltan las empresas que quebraron (sesgo de supervivencia), lo que
+  infla una estrategia que compra perdedores.
+- Mira el resultado con costes ×1,5 y ×2 y el coste de break-even.
+- Cada configuración que pruebas sobre el mismo periodo hace más probable encontrar algo bonito por
+  azar: la app cuenta cuántas llevas.
 
 ## Tests
 
 ```bash
-python manage.py test
+python manage.py test        # 171 tests: motor y web
 ```
-
-Se prueba con series sintéticas de estructura conocida (proceso OU, pares cointegrados, correlación
-sin cointegración), de modo que el motor tiene que *recuperar* lo que se sabe que hay. El proveedor
-de FMP se prueba con respuestas simuladas; **no se ha ejecutado contra la API real**, así que la
-primera importación real conviene hacerla con un solo ticker y una ventana corta.
 
 ## Estructura
 
 ```
-engine/      núcleo cuantitativo en Python puro (sin Django): estadística, pares, proveedores
-pairs/       app Django: modelo DailyBar y comandos import_prices / find_pairs
-screener/    screener fundamental
-stockproject/  configuración de Django (lee .env; ver .env.example)
-docs/PLAN.md   plan, decisiones de diseño, mediciones y estado de cada fase
+engine/          Python puro (sin Django): proveedores, estadística, motor de backtest, estrategias
+  backtest/      config, datos, vista truncada, simulador, métricas, robustez, estrategias
+core/            cola de trabajos, layout, panel
+market/          valores, barras diarias, universos, importación, presets, demo
+backtests/       ejecuciones, operaciones, formularios, vistas, escáner y par
+templates/       plantillas (HTMX + Tailwind)
+static/          CSS compilado, gráficos (Lightweight Charts) y htmx en static/vendor
+docs/            PLAN.md (plan y estado) y ESTRATEGIAS.md (investigación y veredicto)
 ```
+
+Para cambiar estilos o actualizar librerías JS: `npm install`, `npm run build:css` y `npm run vendor`.
+No hace falta Node para usar la app.
+
+> Nada de esto es asesoramiento financiero. Un backtest no garantiza resultados futuros.

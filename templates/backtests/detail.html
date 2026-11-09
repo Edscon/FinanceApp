@@ -118,11 +118,11 @@
   </div>
   <div class="card overflow-x-auto">
     <div class="card-title mb-3">Los que más aportaron</div>
-    <table class="table"><tbody>{% for ticker, v in best %}<tr><td>{{ ticker }}</td><td class="muted">{{ v.group }}</td><td class="num {{ v.net|tone }}">{{ v.net|money }}</td></tr>{% endfor %}</tbody></table>
+    <table class="table"><tbody>{% for ticker, v in best %}<tr><td>{{ ticker }}</td><td class="muted">{{ v.group }}</td><td class="num {{ v.net|tone }}">{{ v.net|money }}</td></tr>{% empty %}<tr><td class="muted">Ninguno.</td></tr>{% endfor %}</tbody></table>
   </div>
   <div class="card overflow-x-auto">
     <div class="card-title mb-3">Los que más restaron</div>
-    <table class="table"><tbody>{% for ticker, v in worst %}<tr><td>{{ ticker }}</td><td class="muted">{{ v.group }}</td><td class="num {{ v.net|tone }}">{{ v.net|money }}</td></tr>{% endfor %}</tbody></table>
+    <table class="table"><tbody>{% for ticker, v in worst %}<tr><td>{{ ticker }}</td><td class="muted">{{ v.group }}</td><td class="num {{ v.net|tone }}">{{ v.net|money }}</td></tr>{% empty %}<tr><td class="muted">Ninguno.</td></tr>{% endfor %}</tbody></table>
   </div>
 </div>
 

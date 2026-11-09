@@ -56,7 +56,7 @@ class ServiceTests(TestCase):
         upsert_bars(instrument, data)
         instrument.refresh_from_db()
         self.assertTrue(any('huecos' in f for f in instrument.quality))
-        self.assertTrue(any('saltos' in f for f in instrument.quality))
+        self.assertTrue(any('extremos' in f for f in instrument.quality))
 
     def test_presets_are_idempotent(self):
         load_presets()

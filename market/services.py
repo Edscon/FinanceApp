@@ -65,7 +65,8 @@ def quality_flags(dates: list[dt.date], closes: np.ndarray, opens: np.ndarray) -
     with np.errstate(divide='ignore', invalid='ignore'):
         jumps = np.abs(np.diff(np.log(closes)))
     if (jumps > np.log(1.5)).any():
-        flags.append(f'{int((jumps > np.log(1.5)).sum())} saltos diarios de más del 50 % (¿ajuste erróneo?)')
+        flags.append(f'{int((jumps > np.log(1.5)).sum())} movimientos diarios extremos (más de +50 % o -33 %): '
+                     'pueden ser reales (crac, resultados) o un ajuste erróneo (p. ej. una escisión)')
     missing_open = float(np.mean(~np.isfinite(opens))) if len(opens) else 1.0
     if missing_open > 0.05:
         flags.append(f'{100 * missing_open:.0f} % de sesiones sin apertura')

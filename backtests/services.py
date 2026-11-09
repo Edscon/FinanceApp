@@ -224,8 +224,11 @@ def config_rows(config: dict) -> list[tuple[str, str]]:
 
 
 def ranked_tickers(run: BacktestRun, n=10):
-    items = sorted(((t, v) for t, v in (run.attribution.get('by_ticker') or {}).items()), key=lambda kv: kv[1]['net'])
-    return items[::-1][:n], items[:n]
+    """(los que más ganaron, los que más perdieron): solo positivos y solo negativos, sin solaparse."""
+    items = sorted((run.attribution.get('by_ticker') or {}).items(), key=lambda kv: kv[1]['net'])
+    winners = [kv for kv in reversed(items) if kv[1]['net'] > 0][:n]
+    losers = [kv for kv in items if kv[1]['net'] < 0][:n]
+    return winners, losers
 
 
 def groups_table(run: BacktestRun) -> list[tuple[str, dict, float]]:
