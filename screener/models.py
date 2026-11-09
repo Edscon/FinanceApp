@@ -5,6 +5,10 @@ class Company(models.Model):
     name = models.CharField(max_length=128, blank=True, null=True)
     currency = models.CharField(max_length=8, default='USD')
     exchange = models.CharField(max_length=32, blank=True, null=True)
+    # Perfil: sirven para agrupar candidatos a pares y para el filtro del screener.
+    sector = models.CharField(max_length=64, blank=True, null=True)
+    industry = models.CharField(max_length=128, blank=True, null=True)
+    market_cap = models.BigIntegerField(blank=True, null=True)
 
     def __str__(self):
         return self.ticker
