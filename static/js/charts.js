@@ -40,7 +40,8 @@
       },
       grid: { vertLines: { color: 'rgba(30, 41, 59, 0.55)' }, horzLines: { color: 'rgba(30, 41, 59, 0.55)' } },
       rightPriceScale: { borderColor: '#1e293b' },
-      timeScale: { borderColor: '#1e293b' },
+      // minBarSpacing por defecto (0,5 px) recorta 16 años de sesiones a los últimos ~8 al ajustar.
+      timeScale: { borderColor: '#1e293b', minBarSpacing: 0.05 },
       crosshair: { mode: 0 },
       localization: { locale: 'es-ES' },
     });
