@@ -308,3 +308,155 @@ class FMPProvider:
             if isinstance(body, Mapping):
                 text = body.get('Error Message') or body.get('error') or body.get('message') or ''
         return self._redact(str(text)).strip()[:160]
+
+
+# --------------------------------------------------------------------------
+# Yahoo Finance (yfinance)
+# --------------------------------------------------------------------------
+
+def _price_first(columns: pd.MultiIndex) -> bool:
+    return 'Close' in set(columns.get_level_values(0))
+
+
+def parse_yf_frame(frame: pd.DataFrame | None, tickers: list[str]) -> dict[str, list[Bar]]:
+    """Convierte la respuesta de ``yf.download(..., auto_adjust=True)`` en barras por ticker.
+
+    Acepta columnas MultiIndex (Precio, Ticker) o (Ticker, Precio) y columnas planas (un solo
+    ticker). La fecha de cada barra es la de su marca de tiempo tal cual (la zona horaria de la
+    bolsa); convertir antes a UTC desplazaría días en bolsas asiáticas. Se descartan las filas sin
+    cierre (p. ej. días anteriores a la salida a bolsa de ese valor).
+    """
+    out: dict[str, list[Bar]] = {}
+    if frame is None or len(frame) == 0:
+        return out
+    multi = isinstance(frame.columns, pd.MultiIndex)
+    for ticker in tickers:
+        if multi:
+            if _price_first(frame.columns):
+                if ticker not in set(frame.columns.get_level_values(1)):
+                    continue
+                sub = frame.xs(ticker, axis=1, level=1)
+            else:
+                if ticker not in set(frame.columns.get_level_values(0)):
+                    continue
+                sub = frame[ticker]
+        else:
+            if len(tickers) != 1:
+                raise ProviderError('Respuesta de Yahoo sin columnas por ticker.')
+            sub = frame
+        if 'Close' not in sub.columns:
+            continue
+        sub = sub[sub['Close'].notna()]
+        columns = {name: sub[name].to_numpy() if name in sub.columns else [None] * len(sub)
+                   for name in ('Open', 'High', 'Low', 'Close', 'Volume')}
+        bars = []
+        for i, ts in enumerate(sub.index):
+            close = _num(columns['Close'][i])
+            if close is None or close <= 0:
+                continue
+            volume = _num(columns['Volume'][i])
+            bars.append(Bar(
+                date=ts.date() if hasattr(ts, 'date') else _parse_date(ts),
+                adj_open=_num(columns['Open'][i]),
+                adj_high=_num(columns['High'][i]),
+                adj_low=_num(columns['Low'][i]),
+                adj_close=close,
+                volume=int(volume) if volume is not None and volume >= 0 else None,
+            ))
+        if bars:
+            out[ticker] = sorted(bars, key=lambda bar: bar.date)
+    return out
+
+
+def _new_york_now() -> dt.datetime:
+    from zoneinfo import ZoneInfo
+
+    return dt.datetime.now(ZoneInfo('America/New_York'))
+
+
+class YahooProvider:
+    """Precios diarios ajustados de Yahoo Finance mediante ``yfinance`` (gratis, sin clave).
+
+    - Descarga por lotes con pausa entre lotes y reintentos con espera exponencial (Yahoo limita
+      la frecuencia de peticiones).
+    - ``auto_adjust=True`` explícito: OHLC ajustados por splits y dividendos de forma coherente.
+    - Si el mercado de Nueva York sigue abierto, se descarta la barra de hoy (está incompleta).
+    - ``yfinance`` se importa solo al usarlo; ``download`` se puede inyectar en los tests.
+    """
+
+    name = 'yahoo'
+
+    def __init__(self, *, chunk_size=20, pause=1.0, max_retries=3, backoff=2.0,
+                 sleep: Callable[[float], None] = time.sleep, download=None, now=_new_york_now):
+        self.chunk_size = chunk_size
+        self.pause = pause
+        self.max_retries = max_retries
+        self.backoff = backoff
+        self._sleep = sleep
+        self._download_fn = download
+        self._now = now
+
+    def _download(self):
+        if self._download_fn is not None:
+            return self._download_fn
+        import yfinance as yf
+
+        return yf.download
+
+    def daily_bars_many(self, tickers, start: dt.date | None = None, end: dt.date | None = None, progress=None):
+        """Devuelve ``(barras por ticker, error por ticker)``. Un ticker fallido no detiene al resto."""
+        tickers = list(dict.fromkeys(tickers))
+        download = self._download()
+        result: dict[str, list[Bar]] = {}
+        errors: dict[str, str] = {}
+        chunks = [tickers[i : i + self.chunk_size] for i in range(0, len(tickers), self.chunk_size)]
+        for k, chunk in enumerate(chunks):
+            frame, last_error = None, ''
+            for attempt in range(self.max_retries + 1):
+                try:
+                    frame = download(
+                        chunk,
+                        start=(start or dt.date(2000, 1, 1)).isoformat(),
+                        end=(end + dt.timedelta(days=1)).isoformat() if end else None,  # 'end' es exclusivo
+                        interval='1d',
+                        auto_adjust=True,
+                        actions=False,
+                        progress=False,
+                        threads=True,
+                    )
+                    break
+                except Exception as exc:  # yfinance lanza tipos variados (límite de peticiones, red...)
+                    last_error = type(exc).__name__
+                    frame = None
+                    if attempt < self.max_retries:
+                        self._sleep(self.backoff * 2**attempt)
+            if frame is None:
+                for ticker in chunk:
+                    errors[ticker] = f'Yahoo no respondió tras {self.max_retries + 1} intentos ({last_error}).'
+                continue
+            parsed = parse_yf_frame(frame, chunk)
+            for ticker in chunk:
+                bars = self._drop_partial(parsed.get(ticker, []))
+                if bars:
+                    result[ticker] = bars
+                else:
+                    errors[ticker] = 'Yahoo no devolvió datos (¿ticker incorrecto o dejó de cotizar?).'
+            if progress:
+                progress((k + 1) / len(chunks), f'Descargados {min((k + 1) * self.chunk_size, len(tickers))} de {len(tickers)} valores')
+            if k < len(chunks) - 1 and self.pause:
+                self._sleep(self.pause)
+        return result, errors
+
+    def daily_bars(self, ticker: str, start: dt.date | None = None, end: dt.date | None = None) -> list[Bar]:
+        bars, errors = self.daily_bars_many([ticker], start, end)
+        if ticker not in bars:
+            raise ProviderError(errors.get(ticker, 'sin datos'))
+        return bars[ticker]
+
+    def _drop_partial(self, bars: list[Bar]) -> list[Bar]:
+        if not bars:
+            return bars
+        now = self._now()
+        if bars[-1].date == now.date() and (now.hour, now.minute) < (16, 30):
+            return bars[:-1]
+        return bars

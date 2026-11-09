@@ -88,6 +88,7 @@ class PairResult:
     half_life: float  # días
     z: float  # z-score actual del spread (z > 0: y caro frente a x)
     stable: bool  # cointegración también en cada mitad de la ventana (informativo)
+    spread_std: float = math.nan  # desviación del spread en la ventana de estimación (ddof=1)
 
 
 @dataclass(frozen=True)
@@ -127,7 +128,8 @@ def find_pairs(
     if prices is None or prices.empty:
         raise ValueError('No hay precios que analizar.')
 
-    window = prices.sort_index().iloc[-cfg.lookback:].ffill(limit=cfg.max_fill)
+    # Orden determinista de filas y columnas: el resultado no depende del orden de entrada.
+    window = prices.sort_index().sort_index(axis=1).iloc[-cfg.lookback:].ffill(limit=cfg.max_fill)
     dropped: dict[str, str] = {}
     for column in window.columns:
         series = window[column]
@@ -185,6 +187,7 @@ def find_pairs(
                 half_life=float(hl),
                 z=float(z),
                 stable=_is_stable(formation[y], formation[x], cfg),
+                spread_std=float(np.std(fit.spread.to_numpy(dtype=float), ddof=1)),
             )
         )
     pairs.sort(key=lambda p: (p.p_adj, -abs(p.z)))

@@ -142,3 +142,88 @@ def synthetic_universe(
     }
     truth = {frozenset(('TA', 'TB')), frozenset(('EA', 'EB'))}
     return prices, groups, truth
+
+
+def _ar1(rng, n: int, half_life: float, sd: float) -> np.ndarray:
+    phi = 0.5 ** (1.0 / half_life)
+    shocks = sd * math.sqrt(1.0 - phi * phi) * rng.standard_normal(n)
+    out = np.empty(n)
+    out[0] = sd * rng.standard_normal()
+    for t in range(1, n):
+        out[t] = phi * out[t - 1] + shocks[t]
+    return out
+
+
+def synthetic_market(n: int = 1500, *, seed: int = 11, prefix: str = 'DEMO-', end: dt.date | str = DEFAULT_END) -> dict:
+    """Mercado sintético con OHLC, volumen y estructura conocida, para la demo y los tests.
+
+    Grupos (26 valores, todos con el prefijo ``prefix`` para no chocar con tickers reales):
+
+    * «Reversión A» y «Reversión B» (6 + 6): cada valor tiene un componente propio que revierte a
+      la media (half-life 4 días): la reversión intra-sector debería ganar aquí.
+    * «Ruido» (6): solo caminos aleatorios propios; control nulo, aquí no debería ganar.
+    * «Pares» (8): dos pares cointegrados (half-life 5 y 8), un par trampa correlacionado pero sin
+      cointegración, y un par cointegrado que se rompe al 60 % de la muestra.
+
+    Devuelve ``{'close', 'open', 'volume', 'groups', 'truth'}``.
+    """
+    rng = np.random.default_rng(seed)
+    index = _index(n, end)
+    market = np.cumsum(0.0003 + 0.009 * rng.standard_normal(n))
+    logs: dict[str, np.ndarray] = {}
+    groups: dict[str, str] = {}
+
+    def add(code, path, group):
+        logs[f'{prefix}{code}'] = path
+        groups[f'{prefix}{code}'] = group
+
+    for code, group in (('RA', 'Reversión A'), ('RB', 'Reversión B')):
+        factor = np.cumsum(0.006 * rng.standard_normal(n))
+        for k in range(6):
+            own = _ar1(rng, n, half_life=4.0, sd=0.02) + np.cumsum(0.004 * rng.standard_normal(n))
+            add(f'{code}{k + 1}', math.log(40 + 10 * k) + market + factor + own, group)
+
+    factor = np.cumsum(0.006 * rng.standard_normal(n))
+    for k in range(6):
+        add(f'RU{k + 1}', math.log(30 + 5 * k) + market + factor + np.cumsum(0.012 * rng.standard_normal(n)), 'Ruido')
+
+    def x_path():
+        return math.log(60) + market + np.cumsum(0.01 * rng.standard_normal(n))
+
+    x1 = x_path()
+    add('P1X', x1, 'Pares')
+    add('P1Y', 0.3 + 1.0 * x1 + _ar1(rng, n, half_life=5.0, sd=0.02), 'Pares')
+    x2 = x_path()
+    add('P2X', x2, 'Pares')
+    add('P2Y', 0.1 + 0.9 * x2 + _ar1(rng, n, half_life=8.0, sd=0.02), 'Pares')
+
+    common = market + np.cumsum(0.008 * rng.standard_normal(n))
+    add('TRC', math.log(50) + common + np.cumsum(0.006 * rng.standard_normal(n)), 'Pares')
+    add('TRD', math.log(55) + common + np.cumsum(0.006 * rng.standard_normal(n)), 'Pares')
+
+    break_at = int(0.6 * n)
+    x3 = x_path()
+    drift = np.concatenate([np.zeros(break_at), np.cumsum(0.012 * rng.standard_normal(n - break_at))])
+    add('BKX', x3, 'Pares')
+    add('BKY', 0.2 + 1.0 * x3 + _ar1(rng, n, half_life=5.0, sd=0.02) + drift, 'Pares')
+
+    log_close = pd.DataFrame(logs, index=index)
+    close = np.exp(log_close)
+    daily = log_close.diff()
+    overnight = 0.35 * daily + 0.002 * rng.standard_normal(log_close.shape)
+    log_open = log_close.shift(1) + overnight
+    log_open.iloc[0] = log_close.iloc[0]
+    opens = np.exp(log_open)
+    volume = pd.DataFrame(
+        np.exp(math.log(2e6) + 0.3 * rng.standard_normal(log_close.shape)).round(), index=index, columns=log_close.columns
+    )
+    p = prefix
+    truth = {
+        'reversal_groups': ['Reversión A', 'Reversión B'],
+        'noise_group': 'Ruido',
+        'pairs': [(f'{p}P1Y', f'{p}P1X'), (f'{p}P2Y', f'{p}P2X')],
+        'trap': (f'{p}TRC', f'{p}TRD'),
+        'broken': (f'{p}BKY', f'{p}BKX'),
+        'break_at': index[break_at].date().isoformat(),
+    }
+    return {'close': close, 'open': opens, 'volume': volume, 'groups': groups, 'truth': truth}
