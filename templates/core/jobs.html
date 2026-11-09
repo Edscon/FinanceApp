@@ -1,0 +1,16 @@
+{% extends 'base.html' %}
+{% block title %}Trabajos{% endblock %}
+{% block heading %}Trabajos en segundo plano{% endblock %}
+{% block content %}
+<div class="mb-6">
+  <h2 class="text-xl font-semibold text-white">Trabajos</h2>
+  <p class="muted mt-1 text-sm">Importaciones de datos y backtests. Se ejecutan dentro del propio servidor, uno detrás de otro.</p>
+</div>
+<div class="space-y-3">
+  {% for job in jobs %}
+    {% include 'core/_job_status.html' %}
+  {% empty %}
+    <div class="card muted text-sm">Todavía no se ha lanzado ningún trabajo.</div>
+  {% endfor %}
+</div>
+{% endblock %}

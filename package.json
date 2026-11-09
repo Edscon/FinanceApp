@@ -1,20 +1,16 @@
 {
   "name": "financeapp",
-  "version": "1.0.0",
-  "main": "index.js",
+  "private": true,
+  "description": "Estilos (Tailwind v4) y librerías JS de la web. Solo hace falta para cambiar estilos o actualizar librerías: los ficheros compilados están en static/.",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "build:css": "tailwindcss -i ./static/css/input.css -o ./static/css/output.css --minify",
+    "watch:css": "tailwindcss -i ./static/css/input.css -o ./static/css/output.css --watch",
+    "vendor": "node scripts/vendor.mjs"
   },
-  "keywords": [],
-  "author": "",
-  "license": "ISC",
-  "description": "",
   "devDependencies": {
-    "autoprefixer": "^10.4.21",
-    "postcss": "^8.5.6",
+    "@tailwindcss/cli": "^4.1.10",
+    "htmx.org": "^2.0.4",
+    "lightweight-charts": "^5.0.0",
     "tailwindcss": "^4.1.10"
-  },
-  "dependencies": {
-    "@tailwindcss/cli": "^4.1.10"
   }
 }

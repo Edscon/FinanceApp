@@ -1,0 +1,204 @@
+{% extends 'base.html' %}
+{% load fmt %}
+{% block title %}{{ run.name }}{% endblock %}
+{% block heading %}Backtests · #{{ run.pk }}{% endblock %}
+{% block content %}
+<div class="mb-6 flex flex-wrap items-start justify-between gap-4">
+  <div class="max-w-3xl">
+    <h2 class="text-xl font-semibold text-white">{{ run.name }}{% if run.variant_label %} <span class="muted font-normal">· {{ run.variant_label }}</span>{% endif %}</h2>
+    <div class="mt-2 flex flex-wrap items-center gap-2 text-xs">
+      {% include 'backtests/_status.html' %}
+      <span class="badge">{{ run.strategy_label }}</span>
+      <span class="badge">{{ run.universe_name }}</span>
+      {% if m %}<span class="muted">{{ m.start }} → {{ m.end }} · {{ m.sessions|num:0 }} sesiones</span>{% endif %}
+    </div>
+    {% if run.parent %}<p class="muted mt-2 text-xs">Variante de robustez de <a class="link" href="{% url 'backtests:detail' run.parent.pk %}">#{{ run.parent.pk }}</a>.</p>{% endif %}
+  </div>
+  <div class="flex flex-wrap gap-2">
+    {% if not run.parent %}<a class="btn btn-sm" href="{% url 'backtests:new' %}?from={{ run.pk }}">Duplicar y editar</a>{% endif %}
+    {% if run.is_done %}
+      <a class="btn btn-sm" href="{% url 'backtests:equity_csv' run.pk %}">Equity (CSV)</a>
+      {% if n_trades %}<a class="btn btn-sm" href="{% url 'backtests:trades_csv' run.pk %}">Operaciones (CSV)</a>{% endif %}
+    {% endif %}
+    <form method="post" action="{% url 'backtests:delete' run.pk %}" onsubmit="return confirm('¿Eliminar este backtest?')">{% csrf_token %}<button class="btn btn-danger btn-sm">Eliminar</button></form>
+  </div>
+</div>
+
+{% if not run.is_done %}
+  {% if job %}{% include 'core/_job_status.html' with reload=1 %}{% else %}<div class="card text-sm text-rose-300">Este backtest no tiene trabajo asociado.</div>{% endif %}
+{% else %}
+
+<div class="mb-6 grid grid-cols-2 gap-4 lg:grid-cols-4">
+  <div class="card"><div class="card-title">Rentabilidad anual</div><div class="stat mt-2 {{ m.cagr|tone }}">{{ m.cagr|signed_pct }}</div><div class="muted mt-1 text-xs">Total {{ m.total_return|signed_pct }}</div></div>
+  <div class="card"><div class="card-title">Sharpe</div><div class="stat mt-2">{{ m.sharpe|num }} <span class="muted text-sm font-normal">± {{ m.sharpe_se|num }}</span></div><div class="muted mt-1 text-xs">Intervalo 95 %: {{ sharpe_low|num }} a {{ sharpe_high|num }}</div></div>
+  <div class="card"><div class="card-title">Máximo drawdown</div><div class="stat mt-2 neg">{{ m.max_drawdown|pct }}</div><div class="muted mt-1 text-xs">{{ m.max_drawdown_sessions|num:0 }} sesiones bajo el máximo</div></div>
+  <div class="card"><div class="card-title">Volatilidad anual</div><div class="stat mt-2">{{ m.volatility|pct }}</div><div class="muted mt-1 text-xs">Sortino {{ m.sortino|num }} · Calmar {{ m.calmar|num }}</div></div>
+  <div class="card"><div class="card-title">Rotación anual</div><div class="stat mt-2">{{ m.turnover|num:1 }}×</div><div class="muted mt-1 text-xs">Exposición bruta media {{ m.avg_gross_exposure|pct:0 }}</div></div>
+  <div class="card"><div class="card-title">Coste de break-even</div><div class="stat mt-2">{{ m.break_even_bps|num:1 }} <span class="text-sm font-normal">pb/lado</span></div><div class="muted mt-1 text-xs">Comisión + deslizamiento que lo deja en cero</div></div>
+  <div class="card"><div class="card-title">Costes totales</div><div class="stat mt-2">{{ m.costs|money }}</div><div class="muted mt-1 text-xs">{{ m.cost_share|pct:0 }} del resultado bruto ({{ m.gross_pnl|money }})</div></div>
+  <div class="card"><div class="card-title">Beta frente al benchmark</div><div class="stat mt-2">{{ m.beta|num }}</div><div class="muted mt-1 text-xs">Correlación {{ m.correlation|num }}</div></div>
+</div>
+
+<div class="card mb-6">
+  <div class="mb-3 flex flex-wrap items-center justify-between gap-2">
+    <div class="card-title">Equity y drawdown</div>
+    <div class="flex gap-4 text-xs"><span class="pos">— Estrategia</span><span class="muted">— Benchmark con la misma inversión</span><span class="neg">▬ Drawdown</span></div>
+  </div>
+  <div class="chart" data-chart data-source="equity-chart"></div>
+  {{ equity_chart|json_script:"equity-chart" }}
+</div>
+
+{% if not run.parent %}
+<div id="robustness" class="card mb-6" {% if robustness and robustness.active %}hx-get="{{ request.path }}" hx-select="#robustness" hx-trigger="every 3s" hx-swap="outerHTML"{% endif %}>
+  <div class="card-title mb-2">Robustez</div>
+  {% if not robustness %}
+    <p class="muted mb-4 max-w-3xl text-sm">Repite el backtest con costes ×1,5 y ×2, sin costes, con el otro modo de ejecución y con el parámetro principal ±20 %. Un resultado sólido aguanta todas las variantes; uno frágil depende de un detalle.</p>
+    <form method="post" action="{% url 'backtests:robustness' run.pk %}">{% csrf_token %}<button class="btn btn-primary btn-sm">Ejecutar variantes de robustez</button></form>
+  {% else %}
+    <div class="overflow-x-auto">
+      <table class="table">
+        <thead><tr><th>Variante</th><th class="num">CAGR</th><th class="num">Sharpe</th><th class="num">Máx. DD</th><th class="num">Break-even</th><th>Estado</th></tr></thead>
+        <tbody>
+          {% for row in robustness.rows %}
+            <tr>
+              <td>{% if row.base %}<strong class="text-slate-100">{{ row.label }}</strong>{% else %}<a class="link" href="{% url 'backtests:detail' row.run.pk %}">{{ row.label }}</a>{% endif %}</td>
+              <td class="num {{ row.metrics.cagr|tone }}">{{ row.metrics.cagr|signed_pct }}</td>
+              <td class="num">{{ row.metrics.sharpe|num }}</td>
+              <td class="num neg">{{ row.metrics.max_drawdown|pct }}</td>
+              <td class="num">{{ row.metrics.break_even_bps|num:1 }} pb</td>
+              <td>{% include 'backtests/_status.html' with run=row.run %}</td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% if robustness.gate %}
+      <div class="mt-4 rounded-lg border px-4 py-3 text-sm {% if robustness.gate.passed %}border-emerald-700 text-emerald-200{% else %}border-rose-800 text-rose-200{% endif %}">
+        <strong>Puerta de decisión {% if robustness.gate.passed %}superada{% else %}no superada{% endif %}:</strong>
+        Sharpe con costes ×1,5 = {{ robustness.gate.sharpe_costs_x1_5|num }} (se exige &gt; {{ robustness.gate.threshold|num:1 }}).
+        {% if robustness.gate.all_variants_positive %}Todas las variantes ganan dinero.{% else %}Alguna variante pierde dinero.{% endif %}
+      </div>
+    {% endif %}
+  {% endif %}
+</div>
+{% endif %}
+
+<div class="mb-6 space-y-6">
+  <div class="card overflow-x-auto">
+    <div class="card-title mb-3">Rentabilidad mensual</div>
+    <table class="table">
+      <thead><tr><th>Año</th>{% for mth in "EFMAMJJASOND" %}<th class="num">{{ mth }}</th>{% endfor %}<th class="num">Año</th></tr></thead>
+      <tbody>
+        {% for row in monthly %}
+          <tr><td>{{ row.year }}</td>{% for cell in row.cells %}<td class="heat" style="{{ cell.style }}">{% if cell.value is not None %}{{ cell.value|pct }}{% endif %}</td>{% endfor %}<td class="heat font-medium" style="{{ row.total_style }}">{{ row.total|pct }}</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  <div class="card">
+    <div class="card-title mb-3">Exposición (fracción del capital)</div>
+    <div class="chart-sm" data-chart data-source="exposure-chart"></div>
+    {{ exposure_chart|json_script:"exposure-chart" }}
+    <div class="muted mt-3 text-xs">Primera mitad: Sharpe {{ m.halves.first.sharpe|num }} · segunda mitad: Sharpe {{ m.halves.second.sharpe|num }} (corte en {{ m.halves.second.start }}).</div>
+  </div>
+</div>
+
+<div class="mb-6 grid gap-6 xl:grid-cols-3">
+  <div class="card overflow-x-auto xl:col-span-1">
+    <div class="card-title mb-3">Resultado por grupo</div>
+    <table class="table">
+      <thead><tr><th>Grupo</th><th class="num">Neto</th><th class="num">Bruto</th><th></th></tr></thead>
+      <tbody>
+        {% for name, g, width in groups %}
+          <tr><td>{{ name }}</td><td class="num {{ g.net|tone }}">{{ g.net|money }}</td><td class="num muted">{{ g.gross|money }}</td>
+            <td class="w-24"><div class="h-1.5 rounded bg-slate-800"><div class="h-1.5 rounded {% if g.net >= 0 %}bg-emerald-500{% else %}bg-rose-500{% endif %}" style="width: {{ width|floatformat:0 }}%"></div></div></td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  <div class="card overflow-x-auto">
+    <div class="card-title mb-3">Los que más aportaron</div>
+    <table class="table"><tbody>{% for ticker, v in best %}<tr><td>{{ ticker }}</td><td class="muted">{{ v.group }}</td><td class="num {{ v.net|tone }}">{{ v.net|money }}</td></tr>{% endfor %}</tbody></table>
+  </div>
+  <div class="card overflow-x-auto">
+    <div class="card-title mb-3">Los que más restaron</div>
+    <table class="table"><tbody>{% for ticker, v in worst %}<tr><td>{{ ticker }}</td><td class="muted">{{ v.group }}</td><td class="num {{ v.net|tone }}">{{ v.net|money }}</td></tr>{% endfor %}</tbody></table>
+  </div>
+</div>
+
+{% if m.trades %}
+<div class="mb-6 grid gap-6 xl:grid-cols-3">
+  <div class="card">
+    <div class="card-title mb-3">Operaciones</div>
+    <dl class="grid grid-cols-2 gap-y-2 text-sm">
+      <dt class="muted">Número</dt><dd class="text-right">{{ m.trades.n }}</dd>
+      <dt class="muted">Acierto</dt><dd class="text-right">{{ m.trades.win_rate|pct }}</dd>
+      <dt class="muted">Neto medio</dt><dd class="text-right {{ m.trades.avg_net|tone }}">{{ m.trades.avg_net|money }}</dd>
+      <dt class="muted">Profit factor</dt><dd class="text-right">{{ m.trades.profit_factor|num }}</dd>
+      <dt class="muted">Sesiones medias</dt><dd class="text-right">{{ m.trades.avg_holding|num:1 }}</dd>
+    </dl>
+  </div>
+  <div class="card overflow-x-auto xl:col-span-2">
+    <div class="card-title mb-3">Motivo de salida</div>
+    <table class="table">
+      <thead><tr><th>Motivo</th><th class="num">Operaciones</th><th class="num">Resultado neto</th></tr></thead>
+      <tbody>{% for reason, v in exit_reasons %}<tr><td>{{ reason_labels|get:reason|default:reason }}</td><td class="num">{{ v.n }}</td><td class="num {{ v.net|tone }}">{{ v.net|money }}</td></tr>{% endfor %}</tbody>
+    </table>
+  </div>
+</div>
+
+<div class="card mb-6 overflow-x-auto p-0">
+  <div class="card-title px-5 pt-5">Operaciones{% if n_trades > 300 %} (primeras 300 de {{ n_trades }}; todas en el CSV){% endif %}</div>
+  <table class="table mt-3">
+    <thead><tr><th>Par (y / x)</th><th>Lado</th><th>Entrada</th><th>Salida</th><th class="num">z entrada</th><th class="num">z salida</th><th>Motivo</th><th class="num">Sesiones</th><th class="num">Neto</th><th class="num">Costes</th></tr></thead>
+    <tbody>
+      {% for t in trades %}
+        <tr>
+          <td>{{ t.y }} / {{ t.x }}</td>
+          <td class="muted">{% if t.direction == 1 %}largo spread{% else %}corto spread{% endif %}</td>
+          <td>{{ t.entry_date|date:"Y-m-d" }}</td><td>{{ t.exit_date|date:"Y-m-d" }}</td>
+          <td class="num">{{ t.entry_z|signed }}</td><td class="num">{{ t.exit_z|signed }}</td>
+          <td class="muted">{{ reason_labels|get:t.exit_reason|default:t.exit_reason }}</td>
+          <td class="num">{{ t.holding_sessions }}</td>
+          <td class="num {{ t.net_pnl|tone }}">{{ t.net_pnl|money }}</td>
+          <td class="num muted">{{ t.costs|money }}</td>
+        </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endif %}
+
+{% if run.windows %}
+<details class="card mb-6">
+  <summary class="cursor-pointer text-sm font-medium text-slate-200">Pares elegidos en cada ventana ({{ run.windows|length }} ventanas)</summary>
+  <div class="mt-4 overflow-x-auto">
+    <table class="table">
+      <thead><tr><th>Ventana</th><th>Operativa</th><th class="num">Operaciones</th><th>Pares (β · half-life)</th></tr></thead>
+      <tbody>
+        {% for w in run.windows %}
+          <tr><td>{{ w.index }}</td><td class="muted">{{ w.trading_start }} → {{ w.trading_end }}</td><td class="num">{{ w.n_trades }}</td>
+            <td class="whitespace-normal text-xs">{% for p in w.pairs %}{{ p.y }}/{{ p.x }} <span class="muted">({{ p.beta|num }} · {{ p.half_life|num:1 }} d)</span>{% if not forloop.last %}, {% endif %}{% empty %}<span class="muted">ninguno</span>{% endfor %}</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</details>
+{% endif %}
+
+<div class="grid gap-6 xl:grid-cols-2">
+  <div class="card overflow-x-auto">
+    <div class="card-title mb-3">Configuración</div>
+    <table class="table"><tbody>{% for label, value in config_rows %}<tr><td class="muted">{{ label }}</td><td class="num">{{ value }}</td></tr>{% endfor %}</tbody></table>
+    <p class="muted mt-3 text-xs">Motor {{ run.engine_version }} · huella de datos {{ run.fingerprint }} · {{ trials }} configuraciones probadas en este universo.</p>
+  </div>
+  <div class="card text-sm">
+    <div class="card-title mb-3">Avisos</div>
+    <ul class="list-disc space-y-2 pl-5 text-slate-300">
+      {% for warning in run.warnings %}<li>{{ warning }}</li>{% endfor %}
+      {% if trials > 5 %}<li class="text-amber-300">Has probado {{ trials }} configuraciones en este universo: el mejor resultado está sesgado al alza por puro azar.</li>{% endif %}
+    </ul>
+  </div>
+</div>
+{% endif %}
+{% endblock %}

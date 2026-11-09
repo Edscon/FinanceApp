@@ -1,0 +1,1 @@
+{% if run.status == 'succeeded' %}<span class="badge badge-ok">Completado</span>{% elif run.status == 'failed' %}<span class="badge badge-bad">Fallido</span>{% elif run.status == 'cancelled' %}<span class="badge">Cancelado</span>{% elif run.status == 'queued' %}<span class="badge">En cola</span>{% else %}<span class="badge badge-run">En curso</span>{% endif %}

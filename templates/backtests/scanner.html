@@ -1,0 +1,43 @@
+{% extends 'base.html' %}
+{% load fmt %}
+{% block title %}Escáner de pares{% endblock %}
+{% block heading %}Escáner de pares{% endblock %}
+{% block content %}
+<h2 class="mb-2 text-xl font-semibold text-white">Escáner de pares</h2>
+<p class="muted mb-6 max-w-3xl text-sm">Busca, a una fecha, los pares del mismo grupo que están correlacionados y cointegran, y mide cuánto se ha separado hoy su spread (z). Es una foto en muestra, no un backtest: para saber si operarlos compensa, lanza un backtest de pares.</p>
+
+<form method="get" class="card mb-6">
+  <div class="grid gap-4 md:grid-cols-3 xl:grid-cols-6">
+    {% for field in form %}{% include 'partials/field.html' %}{% endfor %}
+  </div>
+  <button class="btn btn-primary btn-sm mt-4" type="submit">Escanear</button>
+</form>
+
+{% if error %}<div class="card mb-6 border-rose-800 text-sm text-rose-300">{{ error }}</div>{% endif %}
+
+{% if report %}
+  <p class="muted mb-3 text-sm">A {{ report.as_of|date:"Y-m-d" }} · {{ report.n_obs }} sesiones · {{ report.tickers_used|length }} valores · {{ report.n_tested }} pares probados · <strong class="text-slate-200">{{ report.pairs|length }} superan el filtro</strong>{% if report.tickers_dropped %} · {{ report.tickers_dropped|length }} descartados por datos{% endif %}.</p>
+  <div class="card overflow-x-auto p-0">
+    <table class="table">
+      <thead><tr><th>Par (y / x)</th><th>Grupo</th><th class="num">Correlación</th><th class="num">β</th><th class="num">p ajustado</th><th class="num">Half-life</th><th class="num">z hoy</th><th>Estable</th><th>Señal</th></tr></thead>
+      <tbody>
+        {% for p, legs in rows %}
+          <tr>
+            <td><a class="link" href="{% url 'backtests:pair' %}?universe={{ form.cleaned_data.universe.pk }}&y={{ p.y }}&x={{ p.x }}&lookback={{ form.cleaned_data.lookback }}{% if form.cleaned_data.as_of %}&as_of={{ form.cleaned_data.as_of|date:'Y-m-d' }}{% endif %}">{{ p.y }} / {{ p.x }}</a></td>
+            <td class="muted">{{ p.group|default:"—" }}</td>
+            <td class="num">{{ p.corr|num }}</td>
+            <td class="num">{{ p.beta|num }}</td>
+            <td class="num">{% if p.p_adj < 0.0001 %}&lt;0,0001{% else %}{{ p.p_adj|num:4 }}{% endif %}</td>
+            <td class="num">{{ p.half_life|num:1 }} d</td>
+            <td class="num {% if legs %}font-semibold text-amber-300{% endif %}">{{ p.z|signed }}</td>
+            <td>{% if p.stable %}<span class="badge badge-ok">sí</span>{% else %}<span class="badge">no</span>{% endif %}</td>
+            <td>{% if legs %}corto {{ legs.0 }} / largo {{ legs.1 }}{% else %}<span class="muted">—</span>{% endif %}</td>
+          </tr>
+        {% empty %}
+          <tr><td colspan="9" class="muted">Ningún par supera el filtro con estos parámetros.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+{% endif %}
+{% endblock %}

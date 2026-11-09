@@ -1,0 +1,16 @@
+{
+  "name": "ETFs sectoriales e industriales",
+  "description": "ETFs de sector e industria de EE. UU. agrupados por sector amplio. Sirve para contrastar el sesgo de supervivencia de las acciones (un ETF no quiebra). Se evitan duplicados casi idénticos (p. ej. XLK/VGT).",
+  "benchmark": "SPY",
+  "kind": "etf",
+  "groups": {
+    "Tecnología": ["XLK", "SMH", "IGV", "FDN", "SKYY"],
+    "Financiero": ["XLF", "KRE", "KBE", "IAI", "KIE"],
+    "Energía": ["XLE", "XOP", "OIH", "AMLP"],
+    "Salud": ["XLV", "IBB", "XBI", "IHI", "IHF"],
+    "Industria": ["XLI", "ITA", "IYT", "PAVE"],
+    "Consumo": ["XLY", "XRT", "ITB", "XHB", "XLP"],
+    "Materiales y minería": ["XLB", "XME", "GDX", "SIL", "COPX"],
+    "Rentas": ["XLU", "VNQ", "REM", "PFF"]
+  }
+}

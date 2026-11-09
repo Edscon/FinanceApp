@@ -1,0 +1,83 @@
+{% extends 'base.html' %}
+{% load fmt %}
+{% block title %}Panel{% endblock %}
+{% block heading %}Panel{% endblock %}
+{% block content %}
+<div class="mb-8 max-w-3xl">
+  <h2 class="text-2xl font-semibold text-white">Backtesting de gaps entre valores correlacionados</h2>
+  <p class="muted mt-2 text-sm leading-relaxed">
+    Cuando un valor se separa de los que normalmente se mueven con él, ¿compensa apostar a que vuelve?
+    Aquí puedes comprobarlo con datos históricos y costes realistas, sin broker ni dinero real.
+    Hay dos estrategias: la <strong class="text-slate-200">reversión intra-sector</strong> (la principal, la de mejor evidencia
+    publicada) y los <strong class="text-slate-200">pares cointegrados</strong> (para comparar).
+  </p>
+</div>
+
+{% if not coverage.instruments %}
+  <div class="card mb-8 border-emerald-800">
+    <div class="card-title text-emerald-300">Empieza aquí</div>
+    <ol class="mt-4 space-y-4 text-sm">
+      <li class="flex flex-wrap items-center gap-3">
+        <span class="badge">1</span>
+        <span>Prueba la app sin internet con datos sintéticos de estructura conocida:</span>
+        <form method="post" action="{% url 'market:demo' %}">{% csrf_token %}<button class="btn btn-primary btn-sm">Cargar datos de demostración</button></form>
+      </li>
+      <li class="flex flex-wrap items-center gap-3">
+        <span class="badge">2</span>
+        <span>O usa datos reales: crea los universos predefinidos y descarga sus precios de Yahoo Finance.</span>
+        <form method="post" action="{% url 'market:presets' %}">{% csrf_token %}<button class="btn btn-sm">Crear universos predefinidos</button></form>
+      </li>
+      <li class="flex flex-wrap items-center gap-3">
+        <span class="badge">3</span>
+        <span>Lanza un backtest con los parámetros por defecto (fijados antes de ver datos).</span>
+        <a class="btn btn-sm" href="{% url 'backtests:new' %}">Nuevo backtest</a>
+      </li>
+    </ol>
+  </div>
+{% endif %}
+
+<div class="mb-8 grid grid-cols-2 gap-4 lg:grid-cols-4">
+  <div class="card"><div class="card-title">Valores con datos</div><div class="stat mt-2">{{ coverage.instruments|num:0 }}</div></div>
+  <div class="card"><div class="card-title">Barras diarias</div><div class="stat mt-2">{{ coverage.bars|num:0 }}</div></div>
+  <div class="card"><div class="card-title">Historia</div><div class="mt-2 text-sm text-slate-200">{% if coverage.first %}{{ coverage.first|date:"Y-m-d" }} → {{ coverage.last|date:"Y-m-d" }}{% else %}—{% endif %}</div></div>
+  <div class="card"><div class="card-title">Universos</div><div class="stat mt-2">{{ coverage.universes }}</div></div>
+</div>
+
+{% if jobs %}
+  <h3 class="mb-3 text-sm font-semibold text-slate-300">En marcha</h3>
+  <div class="mb-8 space-y-3">{% for job in jobs %}{% include 'core/_job_status.html' %}{% endfor %}</div>
+{% endif %}
+
+<div class="mb-3 flex items-center justify-between">
+  <h3 class="text-sm font-semibold text-slate-300">Últimos backtests</h3>
+  <a class="btn btn-primary btn-sm" href="{% url 'backtests:new' %}">Nuevo backtest</a>
+</div>
+<div class="card mb-8 overflow-x-auto p-0">
+  <table class="table">
+    <thead><tr><th>Backtest</th><th>Periodo</th><th class="num">CAGR</th><th class="num">Sharpe</th><th class="num">Máx. DD</th><th>Estado</th></tr></thead>
+    <tbody>
+      {% for run in runs %}
+        <tr>
+          <td><a class="link" href="{% url 'backtests:detail' run.pk %}">{{ run.name }}</a></td>
+          <td class="muted">{{ run.metrics.start|default:"—" }} → {{ run.metrics.end|default:"—" }}</td>
+          <td class="num {{ run.metrics.cagr|tone }}">{{ run.metrics.cagr|signed_pct }}</td>
+          <td class="num">{{ run.metrics.sharpe|num }}</td>
+          <td class="num neg">{{ run.metrics.max_drawdown|pct }}</td>
+          <td>{% include 'backtests/_status.html' %}</td>
+        </tr>
+      {% empty %}
+        <tr><td colspan="6" class="muted">Todavía no hay backtests.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+<div class="card max-w-3xl text-sm leading-relaxed text-slate-300">
+  <div class="card-title mb-2">Antes de fiarte de un resultado</div>
+  <ul class="list-disc space-y-1 pl-5">
+    <li>Los universos son los de hoy: faltan las empresas que quebraron (sesgo de supervivencia). Contrasta con el universo de ETFs.</li>
+    <li>Mira el resultado con costes ×1,5 y ×2 y el coste de break-even: si unos pocos puntos básicos lo borran, no hay negocio.</li>
+    <li>Cada configuración que pruebas sobre el mismo periodo hace más probable encontrar algo bonito por azar.</li>
+  </ul>
+</div>
+{% endblock %}

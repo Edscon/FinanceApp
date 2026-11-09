@@ -1,0 +1,40 @@
+{% extends 'base.html' %}
+{% load fmt %}
+{% block title %}Backtests{% endblock %}
+{% block heading %}Backtests{% endblock %}
+{% block content %}
+<div class="mb-6 flex flex-wrap items-end justify-between gap-4">
+  <div>
+    <h2 class="text-xl font-semibold text-white">Backtests</h2>
+    <p class="muted mt-1 text-sm">Marca varios y pulsa «Comparar» para superponer sus curvas.</p>
+  </div>
+  <a class="btn btn-primary btn-sm" href="{% url 'backtests:new' %}">Nuevo backtest</a>
+</div>
+<form method="get" action="{% url 'backtests:compare' %}">
+  <div class="card overflow-x-auto p-0">
+    <table class="table">
+      <thead><tr><th></th><th>#</th><th>Backtest</th><th>Estrategia</th><th>Periodo</th><th class="num">CAGR</th><th class="num">Sharpe</th><th class="num">Máx. DD</th><th class="num">Rotación</th><th class="num">Break-even</th><th>Estado</th></tr></thead>
+      <tbody>
+        {% for run in runs %}
+          <tr>
+            <td>{% if run.is_done %}<input type="checkbox" name="ids" value="{{ run.pk }}">{% endif %}</td>
+            <td class="muted">{{ run.pk }}</td>
+            <td><a class="link" href="{% url 'backtests:detail' run.pk %}">{{ run.name }}</a></td>
+            <td class="muted">{{ run.strategy_label }}</td>
+            <td class="muted">{{ run.metrics.start|default:"—" }} → {{ run.metrics.end|default:"—" }}</td>
+            <td class="num {{ run.metrics.cagr|tone }}">{{ run.metrics.cagr|signed_pct }}</td>
+            <td class="num">{{ run.metrics.sharpe|num }}</td>
+            <td class="num neg">{{ run.metrics.max_drawdown|pct }}</td>
+            <td class="num">{{ run.metrics.turnover|num:1 }}×</td>
+            <td class="num">{{ run.metrics.break_even_bps|num:1 }} pb</td>
+            <td>{% include 'backtests/_status.html' %}</td>
+          </tr>
+        {% empty %}
+          <tr><td colspan="11" class="muted">Todavía no hay backtests. <a class="link" href="{% url 'backtests:new' %}">Lanza el primero</a>.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% if runs %}<button class="btn btn-sm mt-4" type="submit">Comparar seleccionados</button>{% endif %}
+</form>
+{% endblock %}

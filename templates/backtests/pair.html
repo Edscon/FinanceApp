@@ -1,0 +1,36 @@
+{% extends 'base.html' %}
+{% load fmt %}
+{% block title %}{{ y }} / {{ x }}{% endblock %}
+{% block heading %}Escáner · {{ y }} / {{ x }}{% endblock %}
+{% block content %}
+<div class="mb-6 flex flex-wrap items-end justify-between gap-4">
+  <div>
+    <h2 class="text-xl font-semibold text-white">{{ y }} / {{ x }}</h2>
+    <p class="muted mt-1 text-sm">{{ universe.name }}{% if analysis %} · {{ analysis.stats.start }} → {{ analysis.stats.end }} ({{ analysis.stats.sessions }} sesiones; parámetros estimados sin la última){% endif %}</p>
+  </div>
+  <div class="flex gap-2">
+    <a class="btn btn-sm" href="{% url 'backtests:scanner' %}?universe={{ universe.pk }}&lookback={{ lookback }}">Volver al escáner</a>
+    <a class="btn btn-primary btn-sm" href="{% url 'backtests:new' %}?strategy=pairs&universe={{ universe.pk }}">Backtest de pares en este universo</a>
+  </div>
+</div>
+
+{% if error %}
+  <div class="card border-rose-800 text-sm text-rose-300">{{ error }}</div>
+{% else %}
+  {% with s=analysis.stats %}
+  <div class="mb-6 grid grid-cols-2 gap-4 lg:grid-cols-6">
+    <div class="card"><div class="card-title">z hoy</div><div class="stat mt-2 {% if s.z >= 2 or s.z <= -2 %}text-amber-300{% endif %}">{{ s.z|signed }}</div></div>
+    <div class="card"><div class="card-title">Beta</div><div class="stat mt-2">{{ s.beta|num }}</div></div>
+    <div class="card"><div class="card-title">Half-life</div><div class="stat mt-2">{{ s.half_life|num:1 }} <span class="text-sm font-normal">d</span></div></div>
+    <div class="card"><div class="card-title">p (cointegración)</div><div class="stat mt-2">{{ s.pvalue|num:4 }}</div></div>
+    <div class="card"><div class="card-title">Correlación</div><div class="stat mt-2">{{ s.corr|num }}</div></div>
+    <div class="card"><div class="card-title">Desviación del spread</div><div class="stat mt-2">{{ s.sigma|pct }}</div></div>
+  </div>
+  {% endwith %}
+  <div class="card">
+    <div class="mb-3 flex flex-wrap gap-4 text-xs"><span class="pos">— {{ y }} (base 100)</span><span class="text-sky-400">— {{ x }} (base 100)</span><span class="text-violet-400">— spread log(y) − α − β·log(x) con bandas ±1/2/3σ</span><span class="text-amber-300">— z</span></div>
+    <div class="h-[34rem] w-full" data-chart data-source="pair-chart"></div>
+    {{ analysis.chart|json_script:"pair-chart" }}
+  </div>
+{% endif %}
+{% endblock %}

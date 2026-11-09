@@ -1,0 +1,29 @@
+{% load fmt %}
+<div id="job-{{ job.pk }}" class="card"
+     {% if job.is_active %}hx-get="{% url 'core:job_status' job.pk %}{% if reload %}?reload=1{% endif %}" hx-trigger="every 1s" hx-swap="outerHTML"{% endif %}>
+  <div class="flex items-center justify-between gap-4">
+    <div class="min-w-0">
+      <div class="truncate text-sm font-medium text-slate-100">{{ job.label|default:job.kind }}</div>
+      <div class="mt-0.5 truncate text-xs text-slate-400">{{ job.message|default:job.get_status_display }}</div>
+    </div>
+    <div class="flex shrink-0 items-center gap-2">
+      {% if job.status == 'succeeded' %}<span class="badge badge-ok">Completado</span>
+      {% elif job.status == 'failed' %}<span class="badge badge-bad">Fallido</span>
+      {% elif job.status == 'cancelled' %}<span class="badge">Cancelado</span>
+      {% elif job.status == 'queued' %}<span class="badge">En cola</span>
+      {% else %}<span class="badge badge-run">{{ job.percent }} %</span>{% endif %}
+      {% if job.is_active %}
+        <form method="post" action="{% url 'core:job_cancel' job.pk %}">{% csrf_token %}
+          <input type="hidden" name="next" value="{{ request.get_full_path }}">
+          <button class="btn btn-sm btn-danger" type="submit">Cancelar</button>
+        </form>
+      {% endif %}
+    </div>
+  </div>
+  {% if job.is_active %}<div class="progress mt-3"><div style="width: {{ job.percent }}%"></div></div>{% endif %}
+  {% if job.status == 'failed' and job.error %}
+    <details class="mt-3 text-xs text-rose-300"><summary class="cursor-pointer">Ver el error</summary>
+      <pre class="mt-2 max-h-64 overflow-auto whitespace-pre-wrap text-[11px] text-slate-400">{{ job.error }}</pre>
+    </details>
+  {% endif %}
+</div>

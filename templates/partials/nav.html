@@ -1,0 +1,11 @@
+{% with on='bg-slate-800 text-white' off='text-slate-400 hover:bg-slate-800/60 hover:text-white' %}
+<div class="{% if compact %}flex gap-1{% else %}space-y-1{% endif %}">
+  <a href="{% url 'core:dashboard' %}" class="block whitespace-nowrap rounded-lg px-3 py-2 text-sm {% if section == 'panel' %}{{ on }}{% else %}{{ off }}{% endif %}">Panel</a>
+  <a href="{% url 'market:data' %}" class="block whitespace-nowrap rounded-lg px-3 py-2 text-sm {% if section == 'datos' %}{{ on }}{% else %}{{ off }}{% endif %}">Datos</a>
+  <a href="{% url 'market:universes' %}" class="block whitespace-nowrap rounded-lg px-3 py-2 text-sm {% if section == 'universos' %}{{ on }}{% else %}{{ off }}{% endif %}">Universos</a>
+  <a href="{% url 'backtests:scanner' %}" class="block whitespace-nowrap rounded-lg px-3 py-2 text-sm {% if section == 'escaner' %}{{ on }}{% else %}{{ off }}{% endif %}">Escáner de pares</a>
+  <a href="{% url 'backtests:list' %}" class="block whitespace-nowrap rounded-lg px-3 py-2 text-sm {% if section == 'backtests' %}{{ on }}{% else %}{{ off }}{% endif %}">Backtests</a>
+  <a href="{% url 'backtests:compare' %}" class="block whitespace-nowrap rounded-lg px-3 py-2 text-sm {% if section == 'comparar' %}{{ on }}{% else %}{{ off }}{% endif %}">Comparar</a>
+  <a href="{% url 'core:jobs' %}" class="block whitespace-nowrap rounded-lg px-3 py-2 text-sm {% if section == 'trabajos' %}{{ on }}{% else %}{{ off }}{% endif %}">Trabajos</a>
+</div>
+{% endwith %}

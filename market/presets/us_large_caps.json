@@ -1,0 +1,19 @@
+{
+  "name": "US grandes valores",
+  "description": "Unas 140 acciones grandes y líquidas de EE. UU. en los 11 sectores GICS (clasificación actual, incluida la revisión de 2023). Ojo: es la lista de HOY, así que tiene sesgo de supervivencia.",
+  "benchmark": "SPY",
+  "kind": "stock",
+  "groups": {
+    "Tecnología": ["AAPL", "MSFT", "NVDA", "ORCL", "CSCO", "INTC", "ADBE", "CRM", "TXN", "QCOM", "IBM", "AMAT", "MU", "ADI"],
+    "Comunicaciones": ["GOOGL", "META", "VZ", "T", "CMCSA", "DIS", "NFLX", "EA", "OMC", "TMUS", "CHTR"],
+    "Consumo discrecional": ["AMZN", "HD", "MCD", "NKE", "LOW", "SBUX", "TJX", "BKNG", "F", "GM", "MAR", "YUM", "ORLY", "AZO"],
+    "Consumo básico": ["PG", "KO", "PEP", "WMT", "COST", "PM", "MO", "CL", "MDLZ", "KMB", "GIS", "KR", "TGT"],
+    "Energía": ["XOM", "CVX", "COP", "EOG", "SLB", "OXY", "PSX", "MPC", "VLO", "HAL", "KMI", "WMB", "OKE", "DVN"],
+    "Financiero": ["JPM", "BAC", "WFC", "C", "GS", "MS", "BLK", "AXP", "SCHW", "USB", "PNC", "MET", "AIG", "BK", "V", "MA"],
+    "Salud": ["JNJ", "UNH", "PFE", "MRK", "ABT", "TMO", "LLY", "AMGN", "BMY", "GILD", "MDT", "CVS", "DHR", "CI"],
+    "Industria": ["GE", "HON", "UPS", "CAT", "DE", "LMT", "RTX", "BA", "MMM", "UNP", "FDX", "GD", "NOC", "EMR", "ITW", "CSX"],
+    "Materiales": ["LIN", "APD", "SHW", "ECL", "NEM", "FCX", "DD", "NUE", "PPG", "IP", "VMC", "MLM"],
+    "Inmobiliario": ["AMT", "PLD", "SPG", "PSA", "EQIX", "O", "WELL", "AVB", "EQR", "DLR", "VTR"],
+    "Utilities": ["NEE", "DUK", "SO", "D", "AEP", "EXC", "SRE", "XEL", "ED", "PEG", "WEC", "EIX"]
+  }
+}

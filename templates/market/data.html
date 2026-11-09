@@ -1,0 +1,76 @@
+{% extends 'base.html' %}
+{% load fmt %}
+{% block title %}Datos{% endblock %}
+{% block heading %}Datos de mercado{% endblock %}
+{% block content %}
+<div class="mb-6 flex flex-wrap items-end justify-between gap-4">
+  <div>
+    <h2 class="text-xl font-semibold text-white">Datos de mercado</h2>
+    <p class="muted mt-1 text-sm">Precios diarios ajustados por splits y dividendos. {{ coverage.instruments }} valores con datos{% if coverage.first %}, de {{ coverage.first|date:"Y-m-d" }} a {{ coverage.last|date:"Y-m-d" }}{% endif %}.</p>
+  </div>
+  <a class="btn btn-sm" href="{% url 'market:universes' %}">Universos</a>
+</div>
+
+<div class="mb-8 grid gap-6 lg:grid-cols-3">
+  <form method="post" class="card space-y-4 lg:col-span-2">
+    {% csrf_token %}
+    <div class="card-title">Importar precios</div>
+    {{ form.non_field_errors }}
+    <div class="grid gap-4 md:grid-cols-2">
+      {% include 'partials/field.html' with field=form.provider %}
+      {% include 'partials/field.html' with field=form.universe %}
+    </div>
+    {% include 'partials/field.html' with field=form.tickers %}
+    <div class="grid gap-4 md:grid-cols-2">
+      {% include 'partials/field.html' with field=form.start %}
+      {% include 'partials/field.html' with field=form.end %}
+    </div>
+    <div class="flex items-center gap-3">
+      <button class="btn btn-primary" type="submit">Importar</button>
+      <span class="help muted text-xs">Se ejecuta en segundo plano. Repetirlo actualiza los datos (idempotente).</span>
+    </div>
+  </form>
+
+  <div class="space-y-4">
+    <div class="card space-y-3 text-sm">
+      <div class="card-title">Sin conexión</div>
+      <p class="muted">26 valores sintéticos con estructura conocida (tickers DEMO-…). Útiles para probar la app; no dicen nada del mercado real.</p>
+      <form method="post" action="{% url 'market:demo' %}">{% csrf_token %}<button class="btn btn-sm">Cargar datos de demostración</button></form>
+    </div>
+    {% if not has_presets %}
+      <div class="card space-y-3 text-sm">
+        <div class="card-title">Universos predefinidos</div>
+        <p class="muted">~140 grandes valores de EE. UU. por sector y ~37 ETFs sectoriales. Se crean sin datos; luego impórtalos.</p>
+        <form method="post" action="{% url 'market:presets' %}">{% csrf_token %}<button class="btn btn-sm">Crear universos predefinidos</button></form>
+      </div>
+    {% endif %}
+  </div>
+</div>
+
+{% if jobs %}
+  <h3 class="mb-3 text-sm font-semibold text-slate-300">Importaciones recientes</h3>
+  <div class="mb-8 space-y-3">{% for job in jobs %}{% include 'core/_job_status.html' %}{% endfor %}</div>
+{% endif %}
+
+<h3 class="mb-3 text-sm font-semibold text-slate-300">Valores con datos{% if without_data %} <span class="muted font-normal">· {{ without_data }} más sin datos todavía</span>{% endif %}</h3>
+<div class="card overflow-x-auto p-0">
+  <table class="table">
+    <thead><tr><th>Ticker</th><th>Sector / grupo</th><th>Fuente</th><th>Desde</th><th>Hasta</th><th class="num">Sesiones</th><th>Calidad</th></tr></thead>
+    <tbody>
+      {% for item in instruments %}
+        <tr>
+          <td><a class="link font-medium" href="{% url 'market:instrument' item.ticker %}">{{ item.ticker }}</a></td>
+          <td class="muted">{{ item.sector|default:"—" }}</td>
+          <td class="muted">{{ item.get_source_display|default:"—" }}</td>
+          <td>{{ item.first_date|date:"Y-m-d" }}</td>
+          <td>{{ item.last_date|date:"Y-m-d" }}</td>
+          <td class="num">{{ item.n_bars|num:0 }}</td>
+          <td>{% if item.quality %}<span class="badge badge-warn" title="{{ item.quality|join:' · ' }}">{{ item.quality|length }} aviso{{ item.quality|length|pluralize }}</span>{% else %}<span class="badge badge-ok">OK</span>{% endif %}</td>
+        </tr>
+      {% empty %}
+        <tr><td colspan="7" class="muted">Todavía no hay precios. Carga la demo o importa un universo.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}

@@ -1,0 +1,60 @@
+{% extends 'base.html' %}
+{% block title %}Nuevo backtest{% endblock %}
+{% block heading %}Backtests · nuevo{% endblock %}
+{% block content %}
+<h2 class="mb-2 text-xl font-semibold text-white">Nuevo backtest</h2>
+<p class="muted mb-6 max-w-3xl text-sm">Los valores por defecto se fijaron <strong class="text-slate-200">antes de ver datos reales</strong>, a partir de la literatura. Cambiarlos hasta que salga bien es sobreajuste: el resultado dejará de valer fuera de muestra.</p>
+
+{% if not has_data %}
+  <div class="card mb-6 border-amber-800 text-sm text-amber-200">No hay ningún universo con precios. Ve a <a class="link" href="{% url 'market:data' %}">Datos</a> y carga la demo o importa un universo.</div>
+{% endif %}
+
+<form method="post" class="space-y-6">
+  {% csrf_token %}
+  {% if form.non_field_errors %}<div class="card border-rose-800 text-sm text-rose-300">{{ form.non_field_errors }}</div>{% endif %}
+
+  <div class="card space-y-4">
+    <div class="grid gap-4 md:grid-cols-2">
+      {% include 'partials/field.html' with field=form.strategy %}
+      <div class="text-sm leading-relaxed text-slate-300">
+        <p data-strategy-section="reversal"><strong class="text-white">Reversión intra-sector.</strong> Cada semana, mide cuánto se ha separado cada valor de los de su grupo (en sigmas) y compra los rezagados y vende los adelantados, neutral en dólares dentro de cada grupo. Es la estrategia con mejor evidencia publicada.</p>
+        <p data-strategy-section="pairs"><strong class="text-white">Pares cointegrados.</strong> Elige pares que cointegran con la historia previa (formación), los opera en el periodo siguiente cuando el spread se aleja más de 2σ y vuelve a elegir. Es el pairs trading clásico, con rentabilidad decreciente según la literatura.</p>
+      </div>
+    </div>
+    <div class="grid gap-4 md:grid-cols-3">
+      {% for field in form.common_fields %}{% include 'partials/field.html' %}{% endfor %}
+    </div>
+  </div>
+
+  <div class="card space-y-4" data-strategy-section="reversal">
+    <div class="card-title">Reglas · reversión intra-sector</div>
+    <div class="grid gap-4 md:grid-cols-4">{% for field in form.reversal_fields %}{% include 'partials/field.html' %}{% endfor %}</div>
+  </div>
+
+  <div class="card space-y-4" data-strategy-section="pairs">
+    <div class="card-title">Reglas · pares cointegrados</div>
+    <div class="grid gap-4 md:grid-cols-4">{% for field in form.pairs_fields %}{% include 'partials/field.html' %}{% endfor %}</div>
+  </div>
+
+  <div class="card space-y-4">
+    <div class="card-title">Costes</div>
+    <p class="muted text-xs">Por defecto, 6 pb por lado (comisión más deslizamiento) y 50 pb al año por el préstamo de los cortos: razonable para valores grandes y líquidos con un broker barato. Prueba también con costes ×2 desde el panel de robustez.</p>
+    <div class="grid gap-4 md:grid-cols-3">{% for field in form.cost_fields %}{% include 'partials/field.html' %}{% endfor %}</div>
+  </div>
+
+  <button class="btn btn-primary" type="submit" {% if not has_data %}disabled{% endif %}>Lanzar backtest</button>
+</form>
+
+<script>
+  (function () {
+    const select = document.getElementById('{{ form.strategy.id_for_label }}');
+    function sync() {
+      document.querySelectorAll('[data-strategy-section]').forEach((el) => {
+        el.hidden = el.dataset.strategySection !== select.value;
+      });
+    }
+    select.addEventListener('change', sync);
+    sync();
+  })();
+</script>
+{% endblock %}

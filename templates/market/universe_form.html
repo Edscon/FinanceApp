@@ -1,0 +1,20 @@
+{% extends 'base.html' %}
+{% block title %}Nuevo universo{% endblock %}
+{% block heading %}Universos · nuevo{% endblock %}
+{% block content %}
+<h2 class="mb-6 text-xl font-semibold text-white">Nuevo universo</h2>
+<form method="post" class="card max-w-2xl space-y-4">
+  {% csrf_token %}
+  {{ form.non_field_errors }}
+  <div class="grid gap-4 md:grid-cols-2">
+    {% include 'partials/field.html' with field=form.name %}
+    {% include 'partials/field.html' with field=form.benchmark %}
+  </div>
+  {% include 'partials/field.html' with field=form.description %}
+  {% include 'partials/field.html' with field=form.members %}
+  <div class="flex gap-2">
+    <button class="btn btn-primary" type="submit">Crear</button>
+    <a class="btn" href="{% url 'market:universes' %}">Cancelar</a>
+  </div>
+</form>
+{% endblock %}

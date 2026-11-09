@@ -1,0 +1,30 @@
+{% extends 'base.html' %}
+{% load fmt %}
+{% block title %}{{ instrument.ticker }}{% endblock %}
+{% block heading %}Datos · {{ instrument.ticker }}{% endblock %}
+{% block content %}
+<div class="mb-6 flex flex-wrap items-end justify-between gap-4">
+  <div>
+    <h2 class="text-xl font-semibold text-white">{{ instrument.ticker }} <span class="muted text-base font-normal">{{ instrument.name }}</span></h2>
+    <p class="muted mt-1 text-sm">{{ instrument.sector|default:"Sin sector" }} · {{ instrument.get_source_display|default:"sin fuente" }} · {{ instrument.n_bars|num:0 }} sesiones ({{ instrument.first_date|date:"Y-m-d" }} → {{ instrument.last_date|date:"Y-m-d" }})</p>
+  </div>
+  <a class="btn btn-sm" href="{% url 'market:data' %}">Volver a datos</a>
+</div>
+{% if instrument.quality %}
+  <div class="card mb-6 border-amber-800 text-sm text-amber-200">
+    <div class="card-title mb-2 text-amber-300">Avisos de calidad</div>
+    <ul class="list-disc pl-5">{% for flag in instrument.quality %}<li>{{ flag }}</li>{% endfor %}</ul>
+  </div>
+{% endif %}
+<div class="card mb-6">
+  <div class="card-title mb-3">Cierre ajustado y volumen</div>
+  <div class="chart" data-chart data-source="instrument-chart"></div>
+  {{ chart|json_script:"instrument-chart" }}
+</div>
+<div class="card text-sm">
+  <div class="card-title mb-2">Universos</div>
+  {% for m in memberships %}
+    <a class="link mr-3" href="{% url 'market:universe' m.universe.pk %}">{{ m.universe.name }}</a><span class="muted mr-4">({{ m.group|default:"sin grupo" }})</span>
+  {% empty %}<span class="muted">No pertenece a ningún universo.</span>{% endfor %}
+</div>
+{% endblock %}

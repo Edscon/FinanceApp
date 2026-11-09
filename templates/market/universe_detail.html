@@ -1,0 +1,59 @@
+{% extends 'base.html' %}
+{% load fmt %}
+{% block title %}{{ universe.name }}{% endblock %}
+{% block heading %}Universos · {{ universe.name }}{% endblock %}
+{% block content %}
+<div class="mb-6 flex flex-wrap items-end justify-between gap-4">
+  <div class="max-w-3xl">
+    <h2 class="text-xl font-semibold text-white">{{ universe.name }}</h2>
+    <p class="muted mt-1 text-sm">{{ universe.description }}</p>
+    <p class="muted mt-1 text-xs">{{ members|length }} valores{% if universe.benchmark %} · benchmark {{ universe.benchmark }}{% endif %}</p>
+  </div>
+  <div class="flex flex-wrap gap-2">
+    <a class="btn btn-primary btn-sm" href="{% url 'backtests:new' %}?universe={{ universe.pk }}">Nuevo backtest</a>
+    <a class="btn btn-sm" href="{% url 'backtests:scanner' %}?universe={{ universe.pk }}">Escanear pares</a>
+    {% if not is_demo %}
+      <form method="post" action="{% url 'market:universe_import' universe.pk %}">{% csrf_token %}<button class="btn btn-sm">Descargar precios (Yahoo)</button></form>
+    {% endif %}
+    <form method="post" action="{% url 'market:universe_delete' universe.pk %}" onsubmit="return confirm('¿Eliminar el universo? Los precios se conservan.')">{% csrf_token %}<button class="btn btn-danger btn-sm">Eliminar</button></form>
+  </div>
+</div>
+
+{% if missing %}
+  <div class="card mb-6 border-amber-800 text-sm text-amber-200">
+    {{ missing|length }} valor{{ missing|length|pluralize:"es" }} sin datos todavía ({{ missing|slice:":12"|join:", " }}{% if missing|length > 12 %}…{% endif %}).
+    {% if not is_demo %}Pulsa «Descargar precios» o impórtalos desde Datos.{% endif %}
+  </div>
+{% endif %}
+
+<div class="card mb-6 overflow-x-auto p-0">
+  <table class="table">
+    <thead><tr><th>Grupo</th><th>Ticker</th><th>Desde</th><th>Hasta</th><th class="num">Sesiones</th></tr></thead>
+    <tbody>
+      {% for m in members %}
+        <tr>
+          <td class="muted">{% ifchanged m.group %}{{ m.group|default:"Sin grupo" }}{% endifchanged %}</td>
+          <td>{% if m.instrument.n_bars %}<a class="link" href="{% url 'market:instrument' m.instrument.ticker %}">{{ m.instrument.ticker }}</a>{% else %}<span class="muted">{{ m.instrument.ticker }}</span>{% endif %}</td>
+          <td>{{ m.instrument.first_date|date:"Y-m-d"|default:"—" }}</td>
+          <td>{{ m.instrument.last_date|date:"Y-m-d"|default:"—" }}</td>
+          <td class="num">{{ m.instrument.n_bars|num:0 }}</td>
+        </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+<details class="card" {% if form.errors %}open{% endif %}>
+  <summary class="cursor-pointer text-sm font-medium text-slate-200">Editar el universo</summary>
+  <form method="post" class="mt-4 space-y-4">
+    {% csrf_token %}
+    <div class="grid gap-4 md:grid-cols-2">
+      {% include 'partials/field.html' with field=form.name %}
+      {% include 'partials/field.html' with field=form.benchmark %}
+    </div>
+    {% include 'partials/field.html' with field=form.description %}
+    {% include 'partials/field.html' with field=form.members %}
+    <button class="btn btn-primary" type="submit">Guardar</button>
+  </form>
+</details>
+{% endblock %}

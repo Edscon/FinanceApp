@@ -17,5 +17,5 @@ node_modules/
 /data/
 .ipynb_checkpoints/
 
-# Nota: db.sqlite3 sigue versionado por ahora (incluye el superusuario y datos
-# importados). Cuando quieras dejar de versionarlo: git rm --cached db.sqlite3
+# Base de datos local (con WAL crea también db.sqlite3-wal y db.sqlite3-shm)
+db.sqlite3*
