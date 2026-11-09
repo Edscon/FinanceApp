@@ -1,6 +1,10 @@
 django>=5.2,<6.0
 python-dotenv
 requests
+numpy
+pandas
+scipy
+statsmodels
 matplotlib
 plotly
 yfinance
