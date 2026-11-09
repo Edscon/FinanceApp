@@ -20,7 +20,8 @@ fuera de muestra y con costes es la Fase 2 (backtesting).
 
 Potencia: con ~500 sesiones diarias el test de Engle-Granger detecta casi
 siempre reversiones de hasta ~10 días de half-life, pero solo ~2/3 de las de 15
-días y ~1/5 de las de 30 (simulado). Para half-lives largos hace falta más
+días y ~1/4 de las de 30 (simulado; reprodúcelo con
+``python -m engine.calibration``). Para half-lives largos hace falta más
 historia (``lookback`` mayor), a costa de más riesgo de cambios estructurales.
 """
 from __future__ import annotations
