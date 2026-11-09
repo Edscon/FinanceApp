@@ -1,2 +1,21 @@
-node_modules
+# Secretos y configuración local (usa .env.example como plantilla)
 .env
+.env.*
+!.env.example
+
+# Python
+__pycache__/
+*.py[cod]
+/env/
+/venv/
+/.venv/
+
+# Node
+node_modules/
+
+# Datos y salidas locales (CSV de precios, exportaciones, etc.)
+/data/
+.ipynb_checkpoints/
+
+# Nota: db.sqlite3 sigue versionado por ahora (incluye el superusuario y datos
+# importados). Cuando quieras dejar de versionarlo: git rm --cached db.sqlite3

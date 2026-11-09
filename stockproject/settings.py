@@ -1,21 +1,39 @@
+import os
 from pathlib import Path
+
+from django.core.exceptions import ImproperlyConfigured
 from dotenv import load_dotenv
+
+# Busca un .env en stockproject/ o en la raíz del repo (ver .env.example).
 load_dotenv()
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
 
 
+def _env_bool(name, default):
+    value = os.getenv(name)
+    if value is None:
+        return default
+    return value.strip().lower() in ('1', 'true', 'yes', 'on')
+
+
 # Quick-start development settings - unsuitable for production
 # See https://docs.djangoproject.com/en/5.2/howto/deployment/checklist/
 
-# SECURITY WARNING: keep the secret key used in production secret!
-SECRET_KEY = 'django-insecure-rj(xt6upsan6%e-@#(crqm6h(w^=^dfxvvfg&r8j2wvbfpybwk'
-
 # SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = True
+# En desarrollo (por defecto) DEBUG=True; en producción define DJANGO_DEBUG=False.
+DEBUG = _env_bool('DJANGO_DEBUG', True)
 
-ALLOWED_HOSTS = []
+# SECURITY WARNING: keep the secret key used in production secret!
+SECRET_KEY = os.getenv('DJANGO_SECRET_KEY')
+if not SECRET_KEY:
+    if not DEBUG:
+        raise ImproperlyConfigured('Define DJANGO_SECRET_KEY cuando DJANGO_DEBUG=False.')
+    # Clave solo para desarrollo local: nunca se usa con DEBUG=False.
+    SECRET_KEY = 'django-insecure-solo-desarrollo-local'
+
+ALLOWED_HOSTS = [h.strip() for h in os.getenv('DJANGO_ALLOWED_HOSTS', '').split(',') if h.strip()]
 
 
 # Application definition
@@ -67,7 +85,8 @@ WSGI_APPLICATION = 'stockproject.wsgi.application'
 DATABASES = {
     'default': {
         'ENGINE': 'django.db.backends.sqlite3',
-        'NAME': BASE_DIR / 'db.sqlite3',
+        # DB_PATH permite apuntar a otro fichero (p. ej. para pruebas) sin tocar db.sqlite3.
+        'NAME': os.getenv('DB_PATH') or BASE_DIR / 'db.sqlite3',
     }
 }
 
@@ -105,8 +124,6 @@ USE_TZ = True
 
 # Static files (CSS, JavaScript, Images)
 # https://docs.djangoproject.com/en/5.2/howto/static-files/
-
-import os
 
 STATIC_URL = '/static/'
 

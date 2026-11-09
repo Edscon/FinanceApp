@@ -1,4 +1,6 @@
-django 
-matplotlib 
-yfinance
+django>=5.2,<6.0
+python-dotenv
+requests
+matplotlib
 plotly
+yfinance
