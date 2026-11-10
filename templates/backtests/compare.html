@@ -23,13 +23,13 @@
   </div>
   <div class="card overflow-x-auto p-0">
     <table class="table">
-      <thead><tr><th>#</th><th>Backtest</th><th>Periodo</th><th class="num">CAGR</th><th class="num">Sharpe</th><th class="num">Máx. DD</th><th class="num">Volatilidad</th><th class="num">Rotación</th><th class="num">Break-even</th></tr></thead>
+      <thead><tr><th>#</th><th>Backtest</th><th class="hidden md:table-cell">Periodo</th><th class="num">CAGR</th><th class="num">Sharpe</th><th class="num">Máx. DD</th><th class="num">Volatilidad</th><th class="num">Rotación</th><th class="num">Break-even</th></tr></thead>
       <tbody>
         {% for run in runs %}
           <tr>
             <td><span class="font-semibold" style="color: {{ colors|at:forloop.counter0 }}">#{{ run.pk }}</span></td>
-            <td class="min-w-56 whitespace-normal!"><a class="link" href="{% url 'backtests:detail' run.pk %}">{{ run.name }}</a>{% if run.variant_label %} <span class="muted">· {{ run.variant_label }}</span>{% endif %}</td>
-            <td class="muted">{{ run.metrics.start }} →<br>{{ run.metrics.end }}</td>
+            <td class="min-w-36 whitespace-normal! md:min-w-56"><a class="link" href="{% url 'backtests:detail' run.pk %}">{{ run.name }}</a>{% if run.variant_label %} <span class="muted">· {{ run.variant_label }}</span>{% endif %}</td>
+            <td class="muted hidden md:table-cell">{{ run.metrics.start }} →<br>{{ run.metrics.end }}</td>
             <td class="num {{ run.metrics.cagr|tone }}">{{ run.metrics.cagr|signed_pct }}</td>
             <td class="num">{{ run.metrics.sharpe|num }} <span class="muted">± {{ run.metrics.sharpe_se|num }}</span></td>
             <td class="num neg">{{ run.metrics.max_drawdown|pct }}</td>

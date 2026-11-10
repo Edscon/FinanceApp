@@ -42,7 +42,7 @@
 <div class="card mb-6">
   <div class="mb-3 flex flex-wrap items-center justify-between gap-2">
     <div class="card-title">Equity y drawdown</div>
-    <div class="flex gap-4 text-xs"><span class="pos">— Estrategia</span><span class="muted">— Benchmark con la misma inversión</span><span class="neg">▬ Drawdown</span></div>
+    <div class="flex flex-wrap gap-x-4 gap-y-1 text-xs"><span class="pos whitespace-nowrap">— Estrategia</span><span class="muted whitespace-nowrap">— Benchmark con la misma inversión</span><span class="neg whitespace-nowrap">▬ Drawdown</span></div>
   </div>
   <div class="chart" data-chart data-source="equity-chart"></div>
   {{ equity_chart|json_script:"equity-chart" }}
